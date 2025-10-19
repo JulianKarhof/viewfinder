@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Viewfinder Canvas</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #171717;
+        }
+        canvas {
+            border: 1px solid white;
+            background-color: #171717;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas" width="1200" height="800"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        function setupHighDPICanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            const displayWidth = 1200;
+            const displayHeight = 800;
+
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+
+            ctx.scale(dpr, dpr);
+        }
+
+        setupHighDPICanvas();
+
+        async function loadAndRenderShapes() {
+            try {
+                const response = await fetch('/api/shapes');
+                const data = await response.json();
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                data.shapes.forEach(shape => {
+                    ctx.fillStyle = shape.color;
+
+                    if (shape.strokeWidth) {
+                        ctx.lineWidth = shape.strokeWidth;
+                        ctx.strokeStyle = 'white';
+                    }
+
+                    if (shape.type === 'circle') {
+                        ctx.beginPath();
+                        ctx.arc(shape.x, shape.y, shape.radius, 0, Math.PI * 2);
+                        ctx.fill();
+                        if (shape.strokeWidth) ctx.stroke();
+                    } else if (shape.type === 'rectangle') {
+                        ctx.fillRect(shape.x, shape.y, shape.width, shape.height);
+                        if (shape.strokeWidth) {
+                            ctx.strokeRect(shape.x, shape.y, shape.width, shape.height);
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Failed to load shapes:', error);
+            }
+        }
+
+        loadAndRenderShapes();
+
+        const ws = new WebSocket('ws://localhost:3000/ws');
+        ws.onmessage = function(event) {
+            if (event.data === 'reload') {
+                loadAndRenderShapes();
+            } else if (event.data === 'reload-page') {
+                window.location.reload();
+            }
+        };
+
+        setInterval(loadAndRenderShapes, 3000);
+        window.addEventListener('focus', loadAndRenderShapes);
+    </script>
+</body>
+</html>

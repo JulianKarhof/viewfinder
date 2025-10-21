@@ -1,4 +1,5 @@
 import { logger } from "./logger.ts";
+import type { CommandMessage, CommandResponse } from "./runner.ts";
 import type { BaseAction } from "./types.ts";
 
 export function startClient(
@@ -55,33 +56,26 @@ export function startClient(
 		sendMessage(shape);
 	}
 
-	process.stdin.setEncoding("utf8");
-	process.stdin.on("data", (data) => {
-		const lines = data
-			.toString()
-			.split("\n")
-			.filter((line) => line.trim());
-
-		for (const line of lines) {
-			try {
-				console.log(`Received command: ${line}`);
-				const command = JSON.parse(line);
-				handleCommand(command);
-			} catch (_) {
-				console.log(
-					`{"commandId": "unknown", "success": false, "error": "Invalid JSON"}`,
-				);
-			}
+	process.on("message", (message) => {
+		if (message && typeof message === "object" && "id" in message) {
+			handleCommand(message as CommandMessage);
 		}
 	});
 
-	function handleCommand(command: { id: string; type: string; data: unknown }) {
-		if (command.type === "ping") {
-			console.log(`{"commandId": "${command.id}", "success": true}`);
+	function handleCommand(message: CommandMessage) {
+		if (message.command.type === "ping") {
+			process.send?.({
+				id: message.id,
+				success: true,
+			} as CommandResponse);
+		} else if (message.command.type === "sendAction") {
+			sendMessage(message.command.action);
 		} else {
-			console.log(
-				`{"commandId": "${command.id}", "success": false, "error": "Unknown command type"}`,
-			);
+			process.send?.({
+				id: message.id,
+				success: false,
+				error: "Unknown command type",
+			} as CommandResponse);
 		}
 	}
 

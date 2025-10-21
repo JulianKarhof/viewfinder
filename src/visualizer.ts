@@ -3,6 +3,8 @@ import { logger } from "./logger";
 
 const log = logger.visualizer;
 
+const localDb = await import(`./db.ts?t=${Date.now()}`);
+
 export function startVisualizer(
 	port: number = 3001,
 	serverUrl: string = "ws://localhost:3000/ws",
@@ -30,6 +32,8 @@ export function startVisualizer(
 
 	function updateLocalState(update: MessageEvent) {
 		log.debug("🔄 Updating local state", update);
+
+		notifyClients();
 	}
 
 	const server: Bun.Server = Bun.serve({
@@ -61,9 +65,7 @@ export function startVisualizer(
 			}
 
 			if (url.pathname === "/api/shapes") {
-				// bust cache
-				const { default: db } = await import(`./db.ts?t=${Date.now()}`);
-				return new Response(JSON.stringify(db), {
+				return new Response(JSON.stringify(localDb), {
 					headers: { "Content-Type": "application/json" },
 				});
 			}

@@ -1,15 +1,42 @@
 import { spawn } from "bun";
 import { logger } from "./logger.js";
+import type { BaseAction } from "./types.js";
 
 const log = logger.main;
 
 export interface ProcessRunnerConfig {
 	maxConcurrentProcesses?: number;
 }
+
 interface ProcessInfo {
 	process: Bun.Subprocess<"pipe", "pipe", "pipe">;
 	name: string;
 	startTime: Date;
+}
+
+export interface PingCommand {
+	type: "ping";
+}
+
+export interface SendActionCommand {
+	type: "sendAction";
+	action: BaseAction;
+}
+
+export type Command = PingCommand | SendActionCommand;
+
+export interface CommandMessage {
+	id: number;
+	command: Command;
+}
+
+export interface CommandResponse {
+	id: number;
+	success: boolean;
+	error?: string;
+	response?: {
+		[key: string]: unknown;
+	};
 }
 
 export class ProcessRunner {
@@ -18,7 +45,8 @@ export class ProcessRunner {
 	private clients: ProcessInfo[] = [];
 	private visualizer: ProcessInfo | null = null;
 	private isShuttingDown = false;
-	private pendingResponses: Map<number, (response: any) => void> = new Map();
+	private pendingResponses: Map<number, (response: CommandResponse) => void> =
+		new Map();
 
 	constructor(config: ProcessRunnerConfig = {}) {
 		process.on("SIGINT", () => this.shutdown());
@@ -35,37 +63,50 @@ export class ProcessRunner {
 		}
 
 		if (this.isShuttingDown && this.getAllRunningProcesses().length === 0) {
-			log.info("All processes have exited. Shutting down.");
+			log.info("✅ All processes have exited. Shutting down.");
 			process.exit(0);
 		}
 	}
 
 	async sendPing(processName: string): Promise<boolean> {
-		const response = await this.sendCommand(processName, '{ type: "ping" }');
+		const response = await this.sendCommand(processName, { type: "ping" });
 		return response.success === true;
 	}
 
-	async sendCommand(processName: string, command: unknown): Promise<unknown> {
+	async sendCommand(
+		processName: string,
+		command: Command,
+		timeoutMs: number = 500,
+	): Promise<CommandResponse> {
 		const process = this.findProcess(processName);
-		const commandWithId = {
+		const commandMessage: CommandMessage = {
 			id: Date.now(),
 			command,
 		};
 
-		log.info(
-			`Sending command to ${processName}: ${JSON.stringify(commandWithId)}`,
+		log.debug(
+			`➡️  Sending command to ${processName}: ${JSON.stringify(commandMessage)}`,
 		);
 
-		const writer = process?.process.stdin;
-		writer?.write(
-			`${new TextEncoder().encode(JSON.stringify(commandWithId))}\n`,
-		);
+		process?.process.send?.(commandMessage);
 
 		return new Promise((resolve) => {
-			this.pendingResponses.set(commandWithId.id, (response) => {
-				log.info(`Response from ${processName}: ${JSON.stringify(response)}`);
+			const timeoutId = setTimeout(() => {
+				this.pendingResponses.delete(commandMessage.id);
+				resolve({
+					id: commandMessage.id,
+					success: false,
+					error: `Command timeout after ${timeoutMs}ms`,
+				});
+			}, timeoutMs);
 
-				this.pendingResponses.delete(commandWithId.id);
+			this.pendingResponses.set(commandMessage.id, (response) => {
+				log.debug(
+					`⬅️  Response from ${processName}: ${JSON.stringify(response)}`,
+				);
+
+				clearTimeout(timeoutId);
+				this.pendingResponses.delete(commandMessage.id);
 				resolve(response);
 			});
 		});
@@ -82,31 +123,15 @@ export class ProcessRunner {
 		return client || null;
 	}
 
-	private handleResponses(processInfo: ProcessInfo) {
+	private handleLogs(processInfo: ProcessInfo) {
 		const { process: proc, name } = processInfo;
 
 		if (proc.stdout) {
 			proc.stdout.pipeTo(
 				new WritableStream({
 					write: (chunk) => {
-						const text = new TextDecoder().decode(chunk).trim();
-
-						if (text && text.charAt(0) === "{") {
-							try {
-								const response = JSON.parse(text);
-								const callback = this.pendingResponses.get(response.commandId);
-								if (callback) {
-									callback(response);
-								} else {
-									log.warn(
-										`No pending response handler for commandId ${response.commandId} from ${name}`,
-									);
-									log.debug(`Unmatched response: ${text}`);
-								}
-							} catch {
-								console.log(text);
-							}
-						} else if (text) {
+						const text = new TextDecoder().decode(chunk).replace(/\n+$/, "");
+						if (text) {
 							console.log(text);
 						}
 					},
@@ -118,7 +143,7 @@ export class ProcessRunner {
 			proc.stderr.pipeTo(
 				new WritableStream({
 					write: (chunk) => {
-						const text = new TextDecoder().decode(chunk).trim();
+						const text = new TextDecoder().decode(chunk).replace(/\n+$/, "");
 						if (text) {
 							console.error(text);
 						}
@@ -131,26 +156,26 @@ export class ProcessRunner {
 			.then((exitCode) => {
 				const runtime = Date.now() - processInfo.startTime.getTime();
 				if (exitCode === 0) {
-					log.info(`[${name}] exited successfully after ${runtime}ms`);
+					log.info(`✅ [${name}] exited successfully after ${runtime}ms`);
 				} else {
 					log.error(
-						`[${name}] exited with code ${exitCode} after ${runtime}ms`,
+						`🚨 [${name}] exited with code ${exitCode} after ${runtime}ms`,
 					);
 				}
 				this.cleanupProcess(name);
 			})
 			.catch((error) => {
-				log.error(`[${name}] crashed: ${error.message}`);
+				log.error(`🚨 [${name}] crashed: ${error.message}`);
 				this.cleanupProcess(name);
 			});
 	}
 
 	async startServer() {
 		if (this.server) {
-			throw new Error("Server is already running");
+			throw new Error("🚨 Server is already running");
 		}
 
-		log.info("Starting server...");
+		log.info("⏳ Starting server...");
 		const proc = spawn(["bun", "server.ts"], {
 			stdout: "pipe",
 			stderr: "pipe",
@@ -163,16 +188,16 @@ export class ProcessRunner {
 			startTime: new Date(),
 		};
 
-		this.handleResponses(this.server);
-		log.info("Server started");
+		this.handleLogs(this.server);
+		log.info("🚀 Server started");
 	}
 
 	async startVisualizer() {
 		if (this.visualizer) {
-			throw new Error("Visualizer is already running");
+			throw new Error("🚨 Visualizer is already running");
 		}
 
-		log.info("Starting visualizer...");
+		log.info("⏳ Starting visualizer...");
 		const proc = spawn(["bun", "visualizer.ts"], {
 			stdout: "pipe",
 			stderr: "pipe",
@@ -185,12 +210,12 @@ export class ProcessRunner {
 			startTime: new Date(),
 		};
 
-		this.handleResponses(this.visualizer);
-		log.info("Visualizer started");
+		this.handleLogs(this.visualizer);
+		log.info("🚀 Visualizer started");
 	}
 
 	async startClients(count: number) {
-		log.info(`Starting ${count} clients...`);
+		log.info(`⏳ Starting ${count} clients...`);
 
 		for (let i = 0; i < count; i++) {
 			const proc = spawn(["bun", "client.ts"], {
@@ -201,6 +226,22 @@ export class ProcessRunner {
 					...process.env,
 					CLIENT_ID: String(i + 1),
 				},
+				ipc: (message, _process) => {
+					if (message && typeof message === "object" && "id" in message) {
+						const response = message as CommandResponse;
+						const callback = this.pendingResponses.get(response.id);
+						if (callback) {
+							callback(response);
+						} else {
+							log.warn(
+								`⚠️ No pending response handler for commandId ${response.id} from client-${
+									i + 1
+								}`,
+							);
+							log.warn(`⚠️ Unmatched IPC message: ${JSON.stringify(response)}`);
+						}
+					}
+				},
 			});
 
 			const clientInfo = {
@@ -210,10 +251,10 @@ export class ProcessRunner {
 			};
 
 			this.clients.push(clientInfo);
-			this.handleResponses(clientInfo);
+			this.handleLogs(clientInfo);
 		}
 
-		log.info(`${count} clients started`);
+		log.info(`🚀 ${count} clients started`);
 	}
 
 	getAllRunningProcesses(): ProcessInfo[] {
@@ -242,27 +283,29 @@ export class ProcessRunner {
 	}
 
 	async stopAll() {
-		log.info("Stopping all processes...");
+		log.info("🛑 Stopping all processes...");
 
 		const processes = this.getAllRunningProcesses();
 
 		for (const processInfo of processes) {
 			try {
-				log.info(`Stopping ${processInfo.name}...`);
+				log.info(`🛑 Stopping ${processInfo.name}...`);
 				processInfo.process.kill("SIGTERM");
 			} catch (error) {
-				log.error(`Failed to stop ${processInfo.name}: ${error}`);
+				log.error(`🚨 Failed to stop ${processInfo.name}: ${error}`);
 				try {
 					processInfo.process.kill("SIGKILL");
 				} catch (killError) {
-					log.error(`Failed to force kill ${processInfo.name}: ${killError}`);
+					log.error(
+						`🚨 Failed to force kill ${processInfo.name}: ${killError}`,
+					);
 				}
 			}
 		}
 
 		const timeout = setTimeout(() => {
 			log.warn(
-				"Timeout waiting for processes to exit, force killing remaining processes",
+				"🚨 Timeout waiting for processes to exit, force killing remaining processes",
 			);
 			this.getAllRunningProcesses().forEach((p) => {
 				try {
@@ -281,24 +324,47 @@ export class ProcessRunner {
 		this.clients = [];
 		this.visualizer = null;
 
-		log.info("All processes stopped");
+		log.info("✅ All processes stopped");
 	}
 
-	async waitForAllProcesses() {
+	async waitForAllProcesses(timeout: number | null = null) {
 		const processes = this.getAllRunningProcesses();
 
 		if (processes.length === 0) {
-			log.info("No processes running");
+			log.warn("⚠️ No processes running");
 			return;
 		}
 
-		log.info(`Waiting for ${processes.length} processes to complete...`);
+		log.info(`⏳ Waiting for ${processes.length} processes to complete...`);
 
-		await Promise.allSettled(
+		const processesPromise = Promise.allSettled(
 			processes.map((p) => p.process.exited.catch(() => {})),
 		);
 
-		log.info("All processes have completed");
+		if (timeout === null) {
+			await processesPromise;
+			log.info("✅ All processes have completed");
+			return;
+		}
+
+		const timeoutMs = timeout * 1000;
+		const timeoutPromise = new Promise<void>((_, reject) => {
+			setTimeout(() => {
+				reject(
+					new Error(
+						`🚨 Timeout waiting for processes to complete after ${timeout}s`,
+					),
+				);
+			}, timeoutMs);
+		});
+
+		try {
+			await Promise.race([processesPromise, timeoutPromise]);
+			log.info("✅ All processes have completed");
+		} catch (error) {
+			log.warn(`⚠️ Timeout reached while waiting for processes: ${error}`);
+			throw error;
+		}
 	}
 
 	async keepAlive() {
@@ -311,12 +377,12 @@ export class ProcessRunner {
 		if (this.isShuttingDown) return;
 
 		this.isShuttingDown = true;
-		log.info("Received shutdown signal, stopping all processes...");
+		log.info("🔌 Received shutdown signal, stopping all processes...");
 
 		try {
 			await this.stopAll();
 		} catch (error) {
-			log.error(`Error during shutdown: ${error}`);
+			log.error(`🚨 Error during shutdown: ${error}`);
 		}
 
 		process.exit(0);

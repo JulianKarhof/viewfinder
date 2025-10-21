@@ -14,9 +14,24 @@ async function main() {
 		await runner.startClients(1);
 
 		await runner.sendPing("client-1");
+
 		for (let i = 1; i < 10; i++) {
 			await new Promise((resolve) => setTimeout(resolve, 1000));
-			await runner.sendPing("client-1");
+			await runner.sendCommand("client-1", {
+				type: "sendAction",
+				action: {
+					shape: {
+						id: `shape-${i}`,
+						type: "circle",
+						x: Math.floor(Math.random() * 500),
+						y: Math.floor(Math.random() * 500),
+						radius: 10,
+						color: "red",
+					},
+					timestamp: Date.now(),
+					type: "addShape",
+				},
+			});
 		}
 
 		await runner.waitForAllProcesses();

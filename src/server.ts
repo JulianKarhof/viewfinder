@@ -24,7 +24,7 @@ export function startServer(port: number = 3000) {
 					return;
 				}
 
-				log.debug("Message from client", message);
+				log.debug("⬅️  Message from client", message);
 
 				switch (action.type) {
 					case "moveShape": {
@@ -55,13 +55,12 @@ export function startServer(port: number = 3000) {
 					}
 				}
 
-				log.debug("Db Update", db);
-
 				const updateMessage = JSON.stringify({
 					type: "dbUpdate",
 					shapes: db.shapes,
 				});
 
+				log.debug(`➡️  Sending update to ${clients.size} clients`);
 				clients.forEach((client) => {
 					client.send(updateMessage);
 				});
@@ -82,6 +81,13 @@ export function startServer(port: number = 3000) {
 		},
 		async fetch(req) {
 			const url = new URL(req.url);
+
+			if (url.pathname === "/") {
+				const html = await Bun.file("./index.html").text();
+				return new Response(html, {
+					headers: { "Content-Type": "text/html" },
+				});
+			}
 
 			if (url.pathname === "/ws") {
 				const success = server.upgrade(req);
@@ -104,7 +110,7 @@ export function startServer(port: number = 3000) {
 		},
 	});
 
-	log.info(`🚀 Server running at http://localhost:${server.port}`);
+	log.info(`🔗 Server running at http://localhost:${server.port}`);
 
 	return {
 		server,

@@ -4,21 +4,23 @@ import type { Action } from "./types";
 
 const log = logger.server;
 
+interface WebSocketData {
+	isWeb?: boolean;
+	clientId: number;
+}
+
 export function startServer(port: number = 3000) {
 	process.title = "viewfinder:server";
-	const clients = new Set<Bun.ServerWebSocket<unknown>>();
+	const clients = new Set<Bun.ServerWebSocket<WebSocketData>>();
+	const webClients = new Set<Bun.ServerWebSocket<WebSocketData>>();
 
 	const server: Bun.Server = Bun.serve({
 		port,
 		websocket: {
-			message(_, message) {
+			message(ws: Bun.ServerWebSocket<WebSocketData>, message) {
 				let action: Action;
 				try {
-					if (typeof message === "string") {
-						action = JSON.parse(message);
-					} else {
-						action = message as unknown as Action;
-					}
+					action = JSON.parse(message.toString());
 				} catch (error) {
 					log.error("Failed to parse message:", error);
 					return;
@@ -53,30 +55,65 @@ export function startServer(port: number = 3000) {
 						);
 						break;
 					}
+					case "moveWindow": {
+						const wsIndex = Array.from(clients).indexOf(ws);
+						db.clients = db.clients.map((client, index) => {
+							if (index === wsIndex) {
+								return {
+									...client,
+									location: {
+										...client.location,
+										x: action.location.x,
+										y: action.location.y,
+									},
+								};
+							}
+							return client;
+						});
+						break;
+					}
 				}
 
-				const updateMessage = JSON.stringify({
-					type: "dbUpdate",
-					shapes: db.shapes,
+				log.debug(`➡️  Sending update to ${clients.size - 1} clients`);
+
+				webClients.forEach((client) => {
+					if (client !== ws) {
+						client.send("reload");
+					}
 				});
 
-				log.debug(`➡️  Sending update to ${clients.size} clients`);
+				if (action.type === "moveWindow") return;
+
 				clients.forEach((client) => {
-					client.send(updateMessage);
+					if (client !== ws) {
+						client.send(message);
+					}
 				});
 			},
-			open(ws) {
-				clients.add(ws);
+			open(ws: Bun.ServerWebSocket<WebSocketData>) {
+				if (ws.data?.isWeb) {
+					webClients.add(ws);
+					log.info(`🤝 New web client connected (${webClients.size} total)`);
+				} else {
+					clients.add(ws);
+					db.clients.push({
+						id: ws.data?.clientId,
+						location: { x: 0, y: 0, height: 200, width: 300 },
+					});
+				}
 
-				// Send initial data to new client
 				const initialMessage = JSON.stringify({
-					type: "dbUpdate",
+					type: "dbInit",
 					shapes: db.shapes,
 				});
 				ws.send(initialMessage);
 			},
-			close(ws) {
-				clients.delete(ws);
+			close(ws: Bun.ServerWebSocket<WebSocketData>) {
+				if (ws.data?.isWeb) {
+					webClients.delete(ws);
+				} else {
+					clients.delete(ws);
+				}
 			},
 		},
 		async fetch(req) {
@@ -90,13 +127,18 @@ export function startServer(port: number = 3000) {
 			}
 
 			if (url.pathname === "/ws") {
-				const success = server.upgrade(req);
+				const isWeb = url.searchParams.get("client") === "web";
+				const clientId = url.searchParams.get("clientId");
+				const success = server.upgrade(req, {
+					data: { isWeb, clientId },
+				});
+
 				return success
 					? undefined
 					: new Response("Failed to upgrade", { status: 500 });
 			}
 
-			if (url.pathname === "/api/shapes") {
+			if (url.pathname === "/api/db") {
 				return new Response(JSON.stringify(db), {
 					headers: { "Content-Type": "application/json" },
 				});

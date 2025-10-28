@@ -1,12 +1,8 @@
 import { spawn } from "bun";
 import { logger } from "./logger.js";
-import type { BaseAction } from "./types.js";
+import type { Action } from "./types.js";
 
 const log = logger.main;
-
-export interface ProcessRunnerConfig {
-	maxConcurrentProcesses?: number;
-}
 
 interface ProcessInfo {
 	process: Bun.Subprocess<"pipe", "pipe", "pipe">;
@@ -20,10 +16,18 @@ export interface PingCommand {
 
 export interface SendActionCommand {
 	type: "sendAction";
-	action: BaseAction;
+	action: Action;
 }
 
-export type Command = PingCommand | SendActionCommand;
+export interface MoveWindowCommand {
+	type: "moveWindow";
+	location: {
+		x: number;
+		y: number;
+	};
+}
+
+export type Command = PingCommand | SendActionCommand | MoveWindowCommand;
 
 export interface CommandMessage {
 	id: number;
@@ -40,7 +44,6 @@ export interface CommandResponse {
 }
 
 export class ProcessRunner {
-	private config: ProcessRunnerConfig = {};
 	private server: ProcessInfo | null = null;
 	private clients: ProcessInfo[] = [];
 	private visualizer: ProcessInfo | null = null;
@@ -48,7 +51,7 @@ export class ProcessRunner {
 	private pendingResponses: Map<number, (response: CommandResponse) => void> =
 		new Map();
 
-	constructor(config: ProcessRunnerConfig = {}) {
+	constructor() {
 		process.on("SIGINT", () => this.shutdown());
 		process.on("SIGTERM", () => this.shutdown());
 	}
@@ -371,6 +374,11 @@ export class ProcessRunner {
 		while (this.getAllRunningProcesses().length > 0 && !this.isShuttingDown) {
 			await new Promise((resolve) => setTimeout(resolve, 1000));
 		}
+	}
+
+	async wait(ms: number) {
+		log.info(`⏳ Waiting for ${ms}ms...`);
+		return new Promise((resolve) => setTimeout(resolve, ms));
 	}
 
 	private async shutdown() {

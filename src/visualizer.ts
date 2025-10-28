@@ -64,7 +64,7 @@ export function startVisualizer(
 				});
 			}
 
-			if (url.pathname === "/api/shapes") {
+			if (url.pathname === "/api/db") {
 				return new Response(JSON.stringify(localDb), {
 					headers: { "Content-Type": "application/json" },
 				});

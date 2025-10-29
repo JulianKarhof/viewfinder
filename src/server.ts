@@ -46,7 +46,9 @@ export function startServer(port: number = 3000) {
 						break;
 					}
 					case "addShape": {
-						db.shapes.push(action.shape);
+						if (action.shape) {
+							db.shapes.push(action.shape);
+						}
 						break;
 					}
 					case "deleteShape": {

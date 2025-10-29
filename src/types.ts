@@ -1,14 +1,16 @@
 export interface Canvas {
 	shapes: Shape[];
-	clients: {
-		id: number;
-		location: {
-			x: number;
-			y: number;
-			width: number;
-			height: number;
-		};
-	}[];
+	clients: Client[];
+}
+
+export interface Client {
+	id: number;
+	location: {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	};
 }
 
 export interface BaseAction {
@@ -18,7 +20,8 @@ export interface BaseAction {
 
 export interface AddShapeAction extends BaseAction {
 	type: "addShape";
-	shape: Shape;
+	coordinateMode?: "global" | "local";
+	shape?: Shape;
 }
 
 export interface MoveShapeAction extends BaseAction {

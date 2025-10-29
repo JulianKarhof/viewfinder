@@ -30,6 +30,77 @@ export interface MoveWindowCommand {
 
 export type Command = PingCommand | SendActionCommand | MoveWindowCommand;
 
+export class ClientWrapper {
+	private runner: ProcessRunner;
+	private clientId: number;
+
+	constructor(runner: ProcessRunner, clientId: number) {
+		this.runner = runner;
+		this.clientId = clientId;
+	}
+
+	private get clientName(): string {
+		return `client-${this.clientId}`;
+	}
+
+	async ping(): Promise<boolean> {
+		return this.runner.sendPing(this.clientName);
+	}
+
+	async moveWindow(location: {
+		x: number;
+		y: number;
+	}): Promise<CommandResponse> {
+		return this.runner.sendCommand(this.clientName, {
+			type: "moveWindow",
+			location,
+		});
+	}
+
+	/**
+	 * Makes the client send an addShape command. If no shape is provided, the client will generate a random shape within its viewport coordinates.
+	 */
+	async addShape(
+		shape: Shape,
+		coordinateMode: AddShapeAction["coordinateMode"] = "global",
+	): Promise<CommandResponse> {
+		return this.runner.sendCommand(this.clientName, {
+			type: "sendAction",
+			action: {
+				type: "addShape",
+				timestamp: Date.now(),
+				coordinateMode,
+				shape: shape,
+			},
+		});
+	}
+
+	async addRandomShapeInViewport(): Promise<CommandResponse> {
+		return this.runner.sendCommand(this.clientName, {
+			type: "sendAction",
+			action: {
+				type: "addShape",
+				timestamp: Date.now(),
+				coordinateMode: "local",
+			},
+		});
+	}
+
+	async sendAction(action: Action): Promise<CommandResponse> {
+		return this.runner.sendCommand(this.clientName, {
+			type: "sendAction",
+			action,
+		});
+	}
+
+	async sendCommand(
+		command: Command,
+		timeoutMs?: number,
+	): Promise<CommandResponse> {
+		return this.runner.sendCommand(this.clientName, command, timeoutMs);
+	}
+}
+
 export interface CommandMessage {
 	id: number;
 	command: Command;
@@ -239,11 +310,11 @@ export class ProcessRunner {
 							callback(response);
 						} else {
 							log.warn(
-								`⚠️ No pending response handler for commandId ${response.id} from client-${
+								`⚠️  No pending response handler for commandId ${response.id} from client-${
 									i + 1
 								}`,
 							);
-							log.warn(`⚠️ Unmatched IPC message: ${JSON.stringify(response)}`);
+							log.warn(`⚠️  Unmatched IPC message: ${JSON.stringify(response)}`);
 						}
 					}
 				},
@@ -333,6 +404,8 @@ export class ProcessRunner {
 	}
 
 	async waitForAllProcesses(timeout: number | null = null) {
+		if (!Settings.isDebugMode) return;
+
 		const processes = this.getAllRunningProcesses();
 
 		if (processes.length === 0) {

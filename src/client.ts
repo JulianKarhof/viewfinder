@@ -1,11 +1,14 @@
+import { Settings } from "./env.ts";
 import { logger } from "./logger.ts";
 import type { CommandMessage, CommandResponse } from "./runner.ts";
-import type { Action, MoveShapeAction, Shape } from "./types.ts";
+import type { Action, Shape } from "./types.ts";
 
 interface ClientState {
 	location: {
 		x: number;
 		y: number;
+		height: 200;
+		width: 300;
 	};
 	shapes: Shape[];
 }
@@ -22,6 +25,8 @@ export function startClient(
 		location: {
 			x: 0,
 			y: 0,
+			height: 200,
+			width: 300,
 		},
 		shapes: [],
 	};
@@ -66,7 +71,7 @@ export function startClient(
 				break;
 			}
 			case "addShape": {
-				clientState.shapes.push(action.shape);
+				if (action.shape) clientState.shapes.push(action.shape);
 				break;
 			}
 			case "deleteShape": {
@@ -105,59 +110,101 @@ export function startClient(
 		log.debug("📍 Moved window to", clientState.location);
 	}
 
-	function sendExampleMessage() {
-		const shape: MoveShapeAction = {
-			timestamp: Date.now(),
-			type: "moveShape",
-			shape: {
-				id: "shape1",
-				type: "circle",
-				x: 100,
-				y: 200,
-				radius: 4,
-				color: "purple",
-			},
-		};
-		sendMessage(shape);
-	}
-
 	process.on("message", (message) => {
 		if (message && typeof message === "object" && "id" in message) {
 			handleCommand(message as CommandMessage);
 		}
 	});
 
+	function generateClientColor(clientId: number): string {
+		const colors = ["red", "blue", "green", "orange", "purple", "teal"];
+		return colors[clientId % colors.length];
+	}
+
+	function handleAction(action: Action) {
+		switch (action.type) {
+			case "addShape":
+				if (!action.shape) {
+					action.shape = {
+						id: `shape-${Date.now()}`,
+						type: "circle",
+						x:
+							clientState.location.x +
+							Math.random() * clientState.location.width,
+						y:
+							clientState.location.y +
+							Math.random() * clientState.location.height,
+						color: generateClientColor(id),
+						radius: 10,
+					};
+				}
+				break;
+			default:
+				break;
+		}
+
+		sendMessage(action);
+	}
+
 	function handleCommand(message: CommandMessage) {
-		if (message.command.type === "ping") {
-			process.send?.({
-				id: message.id,
-				success: true,
-			} as CommandResponse);
-		} else if (message.command.type === "sendAction") {
-			sendMessage(message.command.action);
-			process.send?.({
-				id: message.id,
-				success: true,
-			} as CommandResponse);
-		} else if (message.command.type === "moveWindow") {
-			moveWindow(message.command.location.x, message.command.location.y);
-			process.send?.({
-				id: message.id,
-				success: true,
-			} as CommandResponse);
-		} else {
-			process.send?.({
-				id: message.id,
-				success: false,
-				error: "Unknown command type",
-			} as CommandResponse);
+		const { command } = message;
+		const response: CommandResponse = { id: message.id, success: true };
+
+		switch (command.type) {
+			case "ping":
+				process.send?.(response);
+				break;
+			case "sendAction":
+				handleAction(command.action);
+				process.send?.(response);
+				break;
+			case "moveWindow": {
+				const targetX = command.location.x;
+				const targetY = command.location.y;
+				const currentX = clientState.location.x;
+				const currentY = clientState.location.y;
+
+				const distance = Math.sqrt(
+					(targetX - currentX) ** 2 + (targetY - currentY) ** 2,
+				);
+
+				if (distance < 20) {
+					moveWindow(targetX, targetY);
+					process.send?.(response);
+					break;
+				}
+
+				const steps = Math.min(Math.max(Math.ceil(distance / 30), 1), 8);
+				const intervalMs = Settings.waitTime;
+
+				let step = 0;
+				const interval = setInterval(() => {
+					step++;
+					const progress = step / steps;
+
+					const newX = currentX + (targetX - currentX) * progress;
+					const newY = currentY + (targetY - currentY) * progress;
+
+					moveWindow(newX, newY);
+
+					if (step >= steps) {
+						clearInterval(interval);
+						moveWindow(targetX, targetY);
+						process.send?.(response);
+					}
+				}, intervalMs);
+				break;
+			}
+			default:
+				response.success = false;
+				response.error = "Unknown command type";
+				process.send?.(response);
 		}
 	}
 
 	return {
 		ws,
 		sendMessage,
-		sendExampleMessage,
 		close: () => ws.close(),
 	};
 }

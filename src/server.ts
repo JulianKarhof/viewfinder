@@ -120,10 +120,25 @@ export function startServer(port: number = 3000) {
 			const url = new URL(req.url);
 
 			if (url.pathname === "/") {
-				const html = await Bun.file("./index.html").text();
+				const html = await Bun.file("src/web/index.html").text();
 				return new Response(html, {
 					headers: { "Content-Type": "text/html" },
 				});
+			}
+
+			if (url.pathname === "/index.js") {
+				try {
+					const tsContent = await Bun.file("src/web/index.ts").text();
+					const transpiler = new Bun.Transpiler({ loader: "tsx" });
+					const jsContent = transpiler.transformSync(tsContent);
+
+					return new Response(jsContent, {
+						headers: { "Content-Type": "application/javascript" },
+					});
+				} catch (error) {
+					log.error("TypeScript transpilation error:", error);
+					return new Response("Transpilation failed", { status: 500 });
+				}
 			}
 
 			if (url.pathname === "/ws") {

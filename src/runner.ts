@@ -1,6 +1,7 @@
 import { spawn } from "bun";
-import { logger } from "./logger.js";
-import type { Action } from "./types.js";
+import { Settings } from "./env.ts";
+import { logger } from "./logger.ts";
+import type { Action, AddShapeAction, Shape } from "./types.ts";
 
 const log = logger.main;
 
@@ -79,7 +80,7 @@ export class ProcessRunner {
 	async sendCommand(
 		processName: string,
 		command: Command,
-		timeoutMs: number = 500,
+		timeoutMs: number = Settings.isDebugMode ? 60000 : 100,
 	): Promise<CommandResponse> {
 		const process = this.findProcess(processName);
 		const commandMessage: CommandMessage = {
@@ -96,6 +97,7 @@ export class ProcessRunner {
 		return new Promise((resolve) => {
 			const timeoutId = setTimeout(() => {
 				this.pendingResponses.delete(commandMessage.id);
+				log.warn(`⚠️  Command to ${processName} timed out after ${timeoutMs}ms`);
 				resolve({
 					id: commandMessage.id,
 					success: false,
@@ -179,7 +181,7 @@ export class ProcessRunner {
 		}
 
 		log.info("⏳ Starting server...");
-		const proc = spawn(["bun", "server.ts"], {
+		const proc = spawn(["bun", "src/server.ts"], {
 			stdout: "pipe",
 			stderr: "pipe",
 			stdin: "pipe",
@@ -201,7 +203,7 @@ export class ProcessRunner {
 		}
 
 		log.info("⏳ Starting visualizer...");
-		const proc = spawn(["bun", "visualizer.ts"], {
+		const proc = spawn(["bun", "src/visualizer.ts"], {
 			stdout: "pipe",
 			stderr: "pipe",
 			stdin: "pipe",
@@ -221,7 +223,7 @@ export class ProcessRunner {
 		log.info(`⏳ Starting ${count} clients...`);
 
 		for (let i = 0; i < count; i++) {
-			const proc = spawn(["bun", "client.ts"], {
+			const proc = spawn(["bun", "src/client.ts"], {
 				stdout: "pipe",
 				stderr: "pipe",
 				stdin: "pipe",
@@ -376,7 +378,15 @@ export class ProcessRunner {
 		}
 	}
 
-	async wait(ms: number) {
+	client(clientId: number): ClientWrapper {
+		if (clientId > this.clients.length) {
+			throw new Error(`🚨 Client ${clientId} is not running`);
+		}
+		return new ClientWrapper(this, clientId);
+	}
+
+	async wait(ms: number = Settings.waitTime) {
+		if (ms === 0) return;
 		log.info(`⏳ Waiting for ${ms}ms...`);
 		return new Promise((resolve) => setTimeout(resolve, ms));
 	}

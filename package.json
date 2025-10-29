@@ -9,8 +9,8 @@
 		"typescript": "^5.0.0"
 	},
 	"scripts": {
-		"dev": "bun run index.ts",
-		"benchmark": "bun run -e \"import('./index.js').then(m => m.runQuickBenchmark())\"",
+		"dev": "DEBUG=true bun run src/index.ts",
+		"benchmark": "bun run src/index.ts",
 		"server": "bun run websocket-server.ts",
 		"format": "biome format --write .",
 		"lint": "biome lint .",

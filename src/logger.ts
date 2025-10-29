@@ -98,7 +98,10 @@ class Logger {
 		parts.push(this.colorize(levelText, levelColor));
 		parts.push(entry.message);
 
-		if (entry.data !== undefined && this.options.showData) {
+		if (
+			entry.data !== undefined &&
+			(this.options.showData || entry.level === "error")
+		) {
 			try {
 				let processedData = entry.data;
 

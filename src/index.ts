@@ -33,11 +33,10 @@ async function main() {
 		await runner.client(2).moveWindow({ x: 100, y: 100 });
 
 		await runner.waitForAllProcesses();
-
-		await runner.wait(100);
+		await runner.stopAll();
 
 		const endTime = Date.now();
-		const duration = endTime - startTime - 100;
+		const duration = endTime - startTime;
 		log.info(
 			`✅ Benchmarks completed successfully! Total time: ${duration}ms (${(duration / 1000).toFixed(2)}s)`,
 		);

@@ -31,27 +31,27 @@ export interface MoveWindowCommand {
 export type Command = PingCommand | SendActionCommand | MoveWindowCommand;
 
 export class ClientWrapper {
-	private runner: ProcessRunner;
-	private clientId: number;
+	private _runner: ProcessRunner;
+	private _clientId: number;
 
 	constructor(runner: ProcessRunner, clientId: number) {
-		this.runner = runner;
-		this.clientId = clientId;
+		this._runner = runner;
+		this._clientId = clientId;
 	}
 
-	private get clientName(): string {
-		return `client-${this.clientId}`;
+	private get _clientName(): string {
+		return `client-${this._clientId}`;
 	}
 
 	async ping(): Promise<boolean> {
-		return this.runner.sendPing(this.clientName);
+		return this._runner.sendPing(this._clientName);
 	}
 
 	async moveWindow(location: {
 		x: number;
 		y: number;
 	}): Promise<CommandResponse> {
-		return this.runner.sendCommand(this.clientName, {
+		return this._runner.sendCommand(this._clientName, {
 			type: "moveWindow",
 			location,
 		});
@@ -64,7 +64,7 @@ export class ClientWrapper {
 		shape: Shape,
 		coordinateMode: AddShapeAction["coordinateMode"] = "global",
 	): Promise<CommandResponse> {
-		return this.runner.sendCommand(this.clientName, {
+		return this._runner.sendCommand(this._clientName, {
 			type: "sendAction",
 			action: {
 				type: "addShape",
@@ -76,7 +76,7 @@ export class ClientWrapper {
 	}
 
 	async addRandomShapeInViewport(): Promise<CommandResponse> {
-		return this.runner.sendCommand(this.clientName, {
+		return this._runner.sendCommand(this._clientName, {
 			type: "sendAction",
 			action: {
 				type: "addShape",
@@ -87,7 +87,7 @@ export class ClientWrapper {
 	}
 
 	async sendAction(action: Action): Promise<CommandResponse> {
-		return this.runner.sendCommand(this.clientName, {
+		return this._runner.sendCommand(this._clientName, {
 			type: "sendAction",
 			action,
 		});
@@ -97,7 +97,7 @@ export class ClientWrapper {
 		command: Command,
 		timeoutMs?: number,
 	): Promise<CommandResponse> {
-		return this.runner.sendCommand(this.clientName, command, timeoutMs);
+		return this._runner.sendCommand(this._clientName, command, timeoutMs);
 	}
 }
 
@@ -116,28 +116,28 @@ export interface CommandResponse {
 }
 
 export class ProcessRunner {
-	private server: ProcessInfo | null = null;
-	private clients: ProcessInfo[] = [];
-	private visualizer: ProcessInfo | null = null;
-	private isShuttingDown = false;
-	private pendingResponses: Map<number, (response: CommandResponse) => void> =
+	private _server: ProcessInfo | null = null;
+	private _clients: ProcessInfo[] = [];
+	private _visualizer: ProcessInfo | null = null;
+	private _isShuttingDown = false;
+	private _pendingResponses: Map<number, (response: CommandResponse) => void> =
 		new Map();
 
 	constructor() {
-		process.on("SIGINT", () => this.shutdown());
-		process.on("SIGTERM", () => this.shutdown());
+		process.on("SIGINT", () => this._shutdown());
+		process.on("SIGTERM", () => this._shutdown());
 	}
 
-	private cleanupProcess(name: string) {
+	private _cleanupProcess(name: string) {
 		if (name === "server") {
-			this.server = null;
+			this._server = null;
 		} else if (name === "visualizer") {
-			this.visualizer = null;
+			this._visualizer = null;
 		} else if (name.startsWith("client-")) {
-			this.clients = this.clients.filter((client) => client.name !== name);
+			this._clients = this._clients.filter((client) => client.name !== name);
 		}
 
-		if (this.isShuttingDown && this.getAllRunningProcesses().length === 0) {
+		if (this._isShuttingDown && this.getAllRunningProcesses().length === 0) {
 			log.info("✅ All processes have exited. Shutting down.");
 			process.exit(0);
 		}
@@ -153,7 +153,7 @@ export class ProcessRunner {
 		command: Command,
 		timeoutMs: number = Settings.isDebugMode ? 60000 : 100,
 	): Promise<CommandResponse> {
-		const process = this.findProcess(processName);
+		const process = this._findProcess(processName);
 		const commandMessage: CommandMessage = {
 			id: Date.now(),
 			command,
@@ -167,7 +167,13 @@ export class ProcessRunner {
 
 		return new Promise((resolve) => {
 			const timeoutId = setTimeout(() => {
-				this.pendingResponses.delete(commandMessage.id);
+				this._pendingResponses.delete(commandMessage.id);
+				if (!Settings.isDebugMode) {
+					throw new Error(
+						`🚨 Command to ${processName} timed out after ${timeoutMs}ms`,
+					);
+				}
+
 				log.warn(`⚠️  Command to ${processName} timed out after ${timeoutMs}ms`);
 				resolve({
 					id: commandMessage.id,
@@ -176,30 +182,30 @@ export class ProcessRunner {
 				});
 			}, timeoutMs);
 
-			this.pendingResponses.set(commandMessage.id, (response) => {
+			this._pendingResponses.set(commandMessage.id, (response) => {
 				log.debug(
 					`⬅️  Response from ${processName}: ${JSON.stringify(response)}`,
 				);
 
 				clearTimeout(timeoutId);
-				this.pendingResponses.delete(commandMessage.id);
+				this._pendingResponses.delete(commandMessage.id);
 				resolve(response);
 			});
 		});
 	}
 
-	private findProcess(name: string): ProcessInfo | null {
-		if (this.server && this.server.name === name) {
-			return this.server;
+	private _findProcess(name: string): ProcessInfo | null {
+		if (this._server && this._server.name === name) {
+			return this._server;
 		}
-		if (this.visualizer && this.visualizer.name === name) {
-			return this.visualizer;
+		if (this._visualizer && this._visualizer.name === name) {
+			return this._visualizer;
 		}
-		const client = this.clients.find((c) => c.name === name);
+		const client = this._clients.find((c) => c.name === name);
 		return client || null;
 	}
 
-	private handleLogs(processInfo: ProcessInfo) {
+	private _handleLogs(processInfo: ProcessInfo) {
 		const { process: proc, name } = processInfo;
 
 		if (proc.stdout) {
@@ -238,16 +244,16 @@ export class ProcessRunner {
 						`🚨 [${name}] exited with code ${exitCode} after ${runtime}ms`,
 					);
 				}
-				this.cleanupProcess(name);
+				this._cleanupProcess(name);
 			})
 			.catch((error) => {
 				log.error(`🚨 [${name}] crashed: ${error.message}`);
-				this.cleanupProcess(name);
+				this._cleanupProcess(name);
 			});
 	}
 
 	async startServer() {
-		if (this.server) {
+		if (this._server) {
 			throw new Error("🚨 Server is already running");
 		}
 
@@ -258,18 +264,18 @@ export class ProcessRunner {
 			stdin: "pipe",
 		});
 
-		this.server = {
+		this._server = {
 			process: proc,
 			name: "server",
 			startTime: new Date(),
 		};
 
-		this.handleLogs(this.server);
+		this._handleLogs(this._server);
 		log.info("🚀 Server started");
 	}
 
 	async startVisualizer() {
-		if (this.visualizer) {
+		if (this._visualizer) {
 			throw new Error("🚨 Visualizer is already running");
 		}
 
@@ -280,13 +286,13 @@ export class ProcessRunner {
 			stdin: "pipe",
 		});
 
-		this.visualizer = {
+		this._visualizer = {
 			process: proc,
 			name: "visualizer",
 			startTime: new Date(),
 		};
 
-		this.handleLogs(this.visualizer);
+		this._handleLogs(this._visualizer);
 		log.info("🚀 Visualizer started");
 	}
 
@@ -305,7 +311,7 @@ export class ProcessRunner {
 				ipc: (message, _process) => {
 					if (message && typeof message === "object" && "id" in message) {
 						const response = message as CommandResponse;
-						const callback = this.pendingResponses.get(response.id);
+						const callback = this._pendingResponses.get(response.id);
 						if (callback) {
 							callback(response);
 						} else {
@@ -326,8 +332,8 @@ export class ProcessRunner {
 				startTime: new Date(),
 			};
 
-			this.clients.push(clientInfo);
-			this.handleLogs(clientInfo);
+			this._clients.push(clientInfo);
+			this._handleLogs(clientInfo);
 		}
 
 		log.info(`🚀 ${count} clients started`);
@@ -336,9 +342,9 @@ export class ProcessRunner {
 	getAllRunningProcesses(): ProcessInfo[] {
 		const processes: ProcessInfo[] = [];
 
-		if (this.server) processes.push(this.server);
-		if (this.visualizer) processes.push(this.visualizer);
-		processes.push(...this.clients);
+		if (this._server) processes.push(this._server);
+		if (this._visualizer) processes.push(this._visualizer);
+		processes.push(...this._clients);
 
 		return processes;
 	}
@@ -347,9 +353,9 @@ export class ProcessRunner {
 		const running = this.getAllRunningProcesses();
 		return {
 			totalProcesses: running.length,
-			server: !!this.server,
-			visualizer: !!this.visualizer,
-			clients: this.clients.length,
+			server: !!this._server,
+			visualizer: !!this._visualizer,
+			clients: this._clients.length,
 			processes: running.map((p) => ({
 				name: p.name,
 				startTime: p.startTime,
@@ -396,9 +402,9 @@ export class ProcessRunner {
 
 		clearTimeout(timeout);
 
-		this.server = null;
-		this.clients = [];
-		this.visualizer = null;
+		this._server = null;
+		this._clients = [];
+		this._visualizer = null;
 
 		log.info("✅ All processes stopped");
 	}
@@ -446,13 +452,17 @@ export class ProcessRunner {
 	}
 
 	async keepAlive() {
-		while (this.getAllRunningProcesses().length > 0 && !this.isShuttingDown) {
+		while (this.getAllRunningProcesses().length > 0 && !this._isShuttingDown) {
 			await new Promise((resolve) => setTimeout(resolve, 1000));
 		}
 	}
 
+	clients(): ClientWrapper[] {
+		return this._clients.map((_, index) => new ClientWrapper(this, index + 1));
+	}
+
 	client(clientId: number): ClientWrapper {
-		if (clientId > this.clients.length) {
+		if (clientId > this._clients.length) {
 			throw new Error(`🚨 Client ${clientId} is not running`);
 		}
 		return new ClientWrapper(this, clientId);
@@ -464,10 +474,10 @@ export class ProcessRunner {
 		return new Promise((resolve) => setTimeout(resolve, ms));
 	}
 
-	private async shutdown() {
-		if (this.isShuttingDown) return;
+	private async _shutdown() {
+		if (this._isShuttingDown) return;
 
-		this.isShuttingDown = true;
+		this._isShuttingDown = true;
 		log.info("🔌 Received shutdown signal, stopping all processes...");
 
 		try {

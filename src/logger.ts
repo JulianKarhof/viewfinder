@@ -18,9 +18,9 @@ interface LogEntry {
 }
 
 class Logger {
-	private options: LoggerOptions;
+	private _options: LoggerOptions;
 
-	private static colors = {
+	private static _colors = {
 		reset: "\x1b[0m",
 		bright: "\x1b[1m",
 		dim: "\x1b[2m",
@@ -40,23 +40,23 @@ class Logger {
 		bgBlue: "\x1b[44m",
 	};
 
-	private static levelColors: Record<LogLevel, string> = {
-		debug: Logger.colors.cyan,
-		info: Logger.colors.green,
-		warn: Logger.colors.yellow,
-		error: Logger.colors.red,
+	private static _levelColors: Record<LogLevel, string> = {
+		debug: Logger._colors.cyan,
+		info: Logger._colors.green,
+		warn: Logger._colors.yellow,
+		error: Logger._colors.red,
 	};
 
-	private static contextColors: Record<LogContext, string> = {
-		client: Logger.colors.magenta,
-		server: Logger.colors.blue,
-		visual: Logger.colors.green,
-		misc: Logger.colors.white,
-		main: Logger.colors.yellow,
+	private static _contextColors: Record<LogContext, string> = {
+		client: Logger._colors.magenta,
+		server: Logger._colors.blue,
+		visual: Logger._colors.green,
+		misc: Logger._colors.white,
+		main: Logger._colors.yellow,
 	};
 
 	constructor(options: LoggerOptions = {}) {
-		this.options = {
+		this._options = {
 			useColors: true,
 			showTimestamp: true,
 			showContext: true,
@@ -64,43 +64,43 @@ class Logger {
 		};
 	}
 
-	private formatTimestamp(date: Date): string {
+	private _formatTimestamp(date: Date): string {
 		return date.toISOString().replace("T", " ").substring(0, 19);
 	}
 
-	private colorize(text: string, color: string): string {
-		if (!this.options.useColors) return text;
-		return `${color}${text}${Logger.colors.reset}`;
+	private _colorize(text: string, color: string): string {
+		if (!this._options.useColors) return text;
+		return `${color}${text}${Logger._colors.reset}`;
 	}
 
-	private formatLogEntry(entry: LogEntry): string {
+	private _formatLogEntry(entry: LogEntry): string {
 		const parts: string[] = [];
 
-		if (this.options.showTimestamp) {
-			const timestamp = this.formatTimestamp(entry.timestamp);
-			parts.push(this.colorize(`[${timestamp}]`, Logger.colors.dim));
+		if (this._options.showTimestamp) {
+			const timestamp = this._formatTimestamp(entry.timestamp);
+			parts.push(this._colorize(`[${timestamp}]`, Logger._colors.dim));
 		}
 
-		if (this.options.showContext) {
+		if (this._options.showContext) {
 			const contextColor =
-				Logger.contextColors[entry.context] ?? Logger.colors.white;
+				Logger._contextColors[entry.context] ?? Logger._colors.white;
 			let contextText = entry.context.toUpperCase().padEnd(9);
 			if (entry.contextId !== undefined && entry.context === "client") {
 				contextText =
 					`CLIENT:${entry.contextId.toString().padStart(2, "0")}`.padEnd(9);
 			}
-			parts.push(this.colorize(`[${contextText}]`, contextColor));
+			parts.push(this._colorize(`[${contextText}]`, contextColor));
 		}
 
-		const levelColor = Logger.levelColors[entry.level];
+		const levelColor = Logger._levelColors[entry.level];
 		const levelText = entry.level.toUpperCase().padStart(5);
 
-		parts.push(this.colorize(levelText, levelColor));
+		parts.push(this._colorize(levelText, levelColor));
 		parts.push(entry.message);
 
 		if (
 			entry.data !== undefined &&
-			(this.options.showData || entry.level === "error")
+			(this._options.showData || entry.level === "error")
 		) {
 			try {
 				let processedData = entry.data;
@@ -141,7 +141,7 @@ class Logger {
 		return parts.join(" ");
 	}
 
-	private log(
+	private _log(
 		level: LogLevel,
 		context: LogContext,
 		message: string,
@@ -157,7 +157,7 @@ class Logger {
 			contextId: clientId,
 		};
 
-		const formattedMessage = this.formatLogEntry(entry);
+		const formattedMessage = this._formatLogEntry(entry);
 
 		const consoleMethod =
 			level === "error"
@@ -175,7 +175,7 @@ class Logger {
 		data?: unknown,
 		id?: number,
 	): void {
-		this.log("debug", context, message, data, id);
+		this._log("debug", context, message, data, id);
 	}
 
 	info(
@@ -184,7 +184,7 @@ class Logger {
 		data?: unknown,
 		id?: number,
 	): void {
-		this.log("info", context, message, data, id);
+		this._log("info", context, message, data, id);
 	}
 
 	warn(
@@ -193,7 +193,7 @@ class Logger {
 		data?: unknown,
 		id?: number,
 	): void {
-		this.log("warn", context, message, data, id);
+		this._log("warn", context, message, data, id);
 	}
 
 	error(
@@ -202,16 +202,16 @@ class Logger {
 		data?: unknown,
 		id?: number,
 	): void {
-		this.log("error", context, message, data, id);
+		this._log("error", context, message, data, id);
 	}
 
-	client = (id?: number) => this.createContextLogger("client", id);
-	server = this.createContextLogger("server");
-	visualizer = this.createContextLogger("visual");
-	misc = this.createContextLogger("misc");
-	main = this.createContextLogger("main");
+	client = (id?: number) => this._createContextLogger("client", id);
+	server = this._createContextLogger("server");
+	visualizer = this._createContextLogger("visual");
+	misc = this._createContextLogger("misc");
+	main = this._createContextLogger("main");
 
-	private createContextLogger(context: LogContext, id?: number) {
+	private _createContextLogger(context: LogContext, id?: number) {
 		return {
 			debug: (message: string, data?: unknown) =>
 				this.debug(context, message, data, id),
@@ -225,7 +225,7 @@ class Logger {
 	}
 
 	setOptions(options: Partial<LoggerOptions>): void {
-		this.options = { ...this.options, ...options };
+		this._options = { ...this._options, ...options };
 	}
 }
 

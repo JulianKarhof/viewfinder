@@ -1,7 +1,12 @@
 import { Settings } from "./env.ts";
 import { logger } from "./logger.ts";
-import type { CommandMessage, CommandResponse } from "./runner.ts";
-import type { Action, Shape } from "./types.ts";
+import type {
+	Command,
+	CommandMessage,
+	CommandResponse,
+	Event,
+	Shape,
+} from "./types.ts";
 
 interface ClientState {
 	location: {
@@ -61,12 +66,12 @@ export function startClient(
 	};
 
 	function updateLocalState(update: MessageEvent) {
-		const action: Action = JSON.parse(update.data) as unknown as Action;
+		const action: Event = JSON.parse(update.data) as unknown as Event;
 
 		log.debug("🔄 Updating local state", action);
 
 		switch (action.type) {
-			case "updateShape": {
+			case "updatedShape": {
 				const shape = clientState.shapes.find(
 					(s) => String(s.id) === String(action.shape.id),
 				);
@@ -75,13 +80,13 @@ export function startClient(
 				}
 				break;
 			}
-			case "addShape": {
+			case "createdShape": {
 				if (action.shape) clientState.shapes.push(action.shape);
 				break;
 			}
-			case "deleteShape": {
+			case "deletedShape": {
 				clientState.shapes = clientState.shapes.filter(
-					(shape) => String(shape.id) !== String(action.shape.id),
+					(shape) => String(shape.id) !== String(action.shapeId),
 				);
 				break;
 			}
@@ -103,10 +108,10 @@ export function startClient(
 		log.debug("✅ Local state updated", clientState);
 	}
 
-	function sendMessage(action: Action) {
+	function sendMessage(command: Command) {
 		if (ws.readyState === WebSocket.OPEN) {
-			log.debug("💬 Sending message", action);
-			ws.send(JSON.stringify(action));
+			log.debug("💬 Sending message", command);
+			ws.send(JSON.stringify(command));
 		} else {
 			log.warn("⚠️ WebSocket not ready, message not sent");
 		}
@@ -118,7 +123,6 @@ export function startClient(
 
 		sendMessage({
 			type: "moveWindow",
-			timestamp: Date.now(),
 			location: {
 				x,
 				y,
@@ -134,11 +138,17 @@ export function startClient(
 		}
 	});
 
-	function handleAction(action: Action) {
-		switch (action.type) {
+	function handleCommand(message: CommandMessage) {
+		const { command } = message;
+		const response: CommandResponse = { id: message.id, success: true };
+
+		switch (command.type) {
+			case "ping":
+				process.send?.(response);
+				break;
 			case "addShape":
-				if (!action.shape) {
-					action.shape = {
+				if (!command.shape) {
+					command.shape = {
 						id: `shape-${Date.now()}`,
 						version: 0,
 						type: "circle",
@@ -152,24 +162,12 @@ export function startClient(
 						radius: 8,
 					};
 				}
-				break;
-			default:
-				break;
-		}
-
-		sendMessage(action);
-	}
-
-	function handleCommand(message: CommandMessage) {
-		const { command } = message;
-		const response: CommandResponse = { id: message.id, success: true };
-
-		switch (command.type) {
-			case "ping":
+				sendMessage(command);
 				process.send?.(response);
 				break;
-			case "sendAction":
-				handleAction(command.action);
+			case "updateShape":
+			case "deleteShape":
+				sendMessage(command);
 				process.send?.(response);
 				break;
 			case "moveWindow": {

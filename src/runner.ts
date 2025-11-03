@@ -1,7 +1,13 @@
 import { spawn } from "bun";
 import { Settings } from "./env.ts";
 import { logger } from "./logger.ts";
-import type { Action, AddShapeAction, Shape } from "./types.ts";
+import type {
+	Command,
+	CommandMessage,
+	CommandResponse,
+	CreateShapeCommand,
+	Shape,
+} from "./types.ts";
 
 const log = logger.main;
 
@@ -10,25 +16,6 @@ interface ProcessInfo {
 	name: string;
 	startTime: Date;
 }
-
-export interface PingCommand {
-	type: "ping";
-}
-
-export interface SendActionCommand {
-	type: "sendAction";
-	action: Action;
-}
-
-export interface MoveWindowCommand {
-	type: "moveWindow";
-	location: {
-		x: number;
-		y: number;
-	};
-}
-
-export type Command = PingCommand | SendActionCommand | MoveWindowCommand;
 
 export class ClientWrapper {
 	private _runner: ProcessRunner;
@@ -62,16 +49,12 @@ export class ClientWrapper {
 	 */
 	public async addShape(
 		shape: Shape,
-		coordinateMode: AddShapeAction["coordinateMode"] = "global",
+		coordinateMode: CreateShapeCommand["coordinateMode"] = "global",
 	): Promise<CommandResponse> {
 		return this._runner.sendCommand(this._clientName, {
-			type: "sendAction",
-			action: {
-				type: "addShape",
-				timestamp: Date.now(),
-				coordinateMode,
-				shape: shape,
-			},
+			type: "addShape",
+			coordinateMode,
+			shape: shape,
 		});
 	}
 
@@ -79,30 +62,15 @@ export class ClientWrapper {
 		shape: Omit<Partial<Shape> & Pick<Shape, "id" | "type">, "version">,
 	): Promise<CommandResponse> {
 		return this._runner.sendCommand(this._clientName, {
-			type: "sendAction",
-			action: {
-				type: "updateShape",
-				timestamp: Date.now(),
-				shape: shape,
-			},
+			type: "updateShape",
+			shape: shape,
 		});
 	}
 
 	public async addRandomShapeInViewport(): Promise<CommandResponse> {
 		return this._runner.sendCommand(this._clientName, {
-			type: "sendAction",
-			action: {
-				type: "addShape",
-				timestamp: Date.now(),
-				coordinateMode: "local",
-			},
-		});
-	}
-
-	public async sendAction(action: Action): Promise<CommandResponse> {
-		return this._runner.sendCommand(this._clientName, {
-			type: "sendAction",
-			action,
+			type: "addShape",
+			coordinateMode: "local",
 		});
 	}
 
@@ -114,26 +82,12 @@ export class ClientWrapper {
 	}
 }
 
-export interface CommandMessage {
-	id: number;
-	command: Command;
-}
-
-export interface CommandResponse {
-	id: number;
-	success: boolean;
-	error?: string;
-	response?: {
-		[key: string]: unknown;
-	};
-}
-
 export class ProcessRunner {
 	private _server: ProcessInfo | null = null;
 	private _clients: ProcessInfo[] = [];
 	private _visualizer: ProcessInfo | null = null;
 	private _isShuttingDown = false;
-	private _pendingResponses: Map<number, (response: CommandResponse) => void> =
+	private _pendingResponses: Map<string, (response: CommandResponse) => void> =
 		new Map();
 
 	public constructor() {
@@ -168,7 +122,8 @@ export class ProcessRunner {
 	): Promise<CommandResponse> {
 		const process = this._findProcess(processName);
 		const commandMessage: CommandMessage = {
-			id: Date.now(),
+			id: `cmd-${Date.now()}`,
+			timestamp: Date.now(),
 			command,
 		};
 

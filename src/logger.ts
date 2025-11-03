@@ -55,7 +55,7 @@ class Logger {
 		main: Logger._colors.yellow,
 	};
 
-	constructor(options: LoggerOptions = {}) {
+	public constructor(options: LoggerOptions = {}) {
 		this._options = {
 			useColors: true,
 			showTimestamp: true,
@@ -169,7 +169,7 @@ class Logger {
 		consoleMethod(formattedMessage);
 	}
 
-	debug(
+	public debug(
 		context: LogContext,
 		message: string,
 		data?: unknown,
@@ -178,7 +178,7 @@ class Logger {
 		this._log("debug", context, message, data, id);
 	}
 
-	info(
+	public info(
 		context: LogContext,
 		message: string,
 		data?: unknown,
@@ -187,7 +187,7 @@ class Logger {
 		this._log("info", context, message, data, id);
 	}
 
-	warn(
+	public warn(
 		context: LogContext,
 		message: string,
 		data?: unknown,
@@ -196,7 +196,7 @@ class Logger {
 		this._log("warn", context, message, data, id);
 	}
 
-	error(
+	public error(
 		context: LogContext,
 		message: string,
 		data?: unknown,
@@ -205,11 +205,11 @@ class Logger {
 		this._log("error", context, message, data, id);
 	}
 
-	client = (id?: number) => this._createContextLogger("client", id);
-	server = this._createContextLogger("server");
-	visualizer = this._createContextLogger("visual");
-	misc = this._createContextLogger("misc");
-	main = this._createContextLogger("main");
+	public client = (id?: number) => this._createContextLogger("client", id);
+	public server = this._createContextLogger("server");
+	public visualizer = this._createContextLogger("visual");
+	public misc = this._createContextLogger("misc");
+	public main = this._createContextLogger("main");
 
 	private _createContextLogger(context: LogContext, id?: number) {
 		return {
@@ -224,7 +224,7 @@ class Logger {
 		};
 	}
 
-	setOptions(options: Partial<LoggerOptions>): void {
+	public setOptions(options: Partial<LoggerOptions>): void {
 		this._options = { ...this._options, ...options };
 	}
 }

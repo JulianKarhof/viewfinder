@@ -1,7 +1,7 @@
 import { ClientManager, type WebSocketData } from "./clientManager";
 import db from "./db";
 import { logger } from "./logger";
-import type { Action, Shape } from "./types";
+import type { Command, Shape } from "./types";
 
 const log = logger.server;
 
@@ -13,43 +13,46 @@ export function startServer(port: number = 3000) {
 		port,
 		websocket: {
 			message(ws: Bun.ServerWebSocket<WebSocketData>, message) {
-				let action: Action;
+				let command: Command;
 				try {
-					action = JSON.parse(message.toString());
+					command = JSON.parse(message.toString());
 				} catch (error) {
 					log.error("Failed to parse message:", error);
 					return;
 				}
 
-				log.debug("⬅️  Message from client", action);
+				log.debug("⬅️  Message from client", command);
 
-				switch (action.type) {
+				switch (command.type) {
 					case "updateShape": {
 						const shape = db.shapes.find(
-							(s) => String(s.id) === String(action.shape.id),
+							(s) => String(s.id) === String(command.shape.id),
 						);
 						if (shape) {
-							Object.assign(shape, action.shape);
+							Object.assign(shape, command.shape);
 							shape.version += 1;
 							clientManager.updateLastSeenVersions(shape);
 						}
 						break;
 					}
 					case "addShape": {
-						if (!action.shape) break;
-						db.shapes.push(action.shape);
+						if (!command.shape) break;
+						db.shapes.push(command.shape);
 
 						const client = clientManager.get(ws.data.clientId);
 						if (client) {
-							client.lastSeenVersion.set(action.shape.id, action.shape.version);
+							client.lastSeenVersion.set(
+								command.shape.id,
+								command.shape.version,
+							);
 						}
 
-						clientManager.updateLastSeenVersions(action.shape);
+						clientManager.updateLastSeenVersions(command.shape);
 						break;
 					}
 					case "deleteShape": {
 						const shape = db.shapes.find(
-							(s) => String(s.id) === String(action.shape.id),
+							(s) => String(s.id) === String(command.shapeId),
 						);
 
 						if (!shape) break;
@@ -62,8 +65,8 @@ export function startServer(port: number = 3000) {
 					case "moveWindow": {
 						const client = clientManager.updateClientViewport(
 							ws.data.clientId,
-							action.location.x,
-							action.location.y,
+							command.location.x,
+							command.location.y,
 						);
 
 						if (!client) break;
@@ -102,25 +105,29 @@ export function startServer(port: number = 3000) {
 						break;
 					}
 					default:
-						log.warn(`⚠️ Unknown action type: ${action}`);
+						log.warn(`⚠️ Unknown action type: ${command}`);
 				}
 
 				clientManager.broadcastToWebClients("reload", ws);
 
-				if (action.type === "moveWindow") return;
+				if (command.type === "moveWindow") return;
 
 				let affectedShape: Shape | undefined;
 
-				switch (action.type) {
+				switch (command.type) {
 					case "updateShape":
+						affectedShape = db.shapes.find(
+							(s) => String(s.id) === String(command.shape.id),
+						);
+						break;
 					case "deleteShape": {
 						affectedShape = db.shapes.find(
-							(s) => String(s.id) === String(action.shape.id),
+							(s) => String(s.id) === String(command.shapeId),
 						);
 						break;
 					}
 					case "addShape": {
-						affectedShape = action.shape;
+						affectedShape = command.shape;
 						break;
 					}
 				}

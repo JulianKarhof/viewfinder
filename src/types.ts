@@ -17,38 +17,27 @@ export interface Viewport {
 	height: number;
 }
 
-export interface BaseAction {
-	timestamp: number;
-	type:
-		| "addShape"
-		| "updateShape"
-		| "deleteShape"
-		| "moveWindow"
-		| "bulkUpdate";
+export interface BaseCommand {
+	type: string;
 }
 
-export interface BulkUpdateAction extends BaseAction {
-	type: "bulkUpdate";
-	shapes: Shape[];
-}
-
-export interface AddShapeAction extends BaseAction {
+export interface CreateShapeCommand extends BaseCommand {
 	type: "addShape";
-	coordinateMode?: "global" | "local";
 	shape?: Shape;
+	coordinateMode?: "global" | "local";
 }
 
-export interface UpdateShapeAction extends BaseAction {
+export interface UpdateShapeCommand extends BaseCommand {
 	type: "updateShape";
 	shape: Partial<Shape> & Pick<Shape, "id" | "type">;
 }
 
-export interface DeleteShapeAction extends BaseAction {
+export interface DeleteShapeCommand extends BaseCommand {
 	type: "deleteShape";
-	shape: Pick<Shape, "id" | "type">;
+	shapeId: string;
 }
 
-export interface MoveWindowAction extends BaseAction {
+export interface MoveWindowCommand extends BaseCommand {
 	type: "moveWindow";
 	location: {
 		x: number;
@@ -56,12 +45,60 @@ export interface MoveWindowAction extends BaseAction {
 	};
 }
 
-export type Action =
-	| AddShapeAction
-	| UpdateShapeAction
-	| DeleteShapeAction
-	| BulkUpdateAction
-	| MoveWindowAction;
+export interface PingCommand extends BaseCommand {
+	type: "ping";
+}
+
+export type Command =
+	| CreateShapeCommand
+	| UpdateShapeCommand
+	| DeleteShapeCommand
+	| MoveWindowCommand
+	| PingCommand;
+
+export type CommandMessage = {
+	id: string;
+	timestamp: number;
+	command: Command;
+};
+
+export interface CommandResponse {
+	id: string;
+	success: boolean;
+	error?: string;
+}
+
+export type BaseEvent = {
+	id: string;
+	timestamp: number;
+	causedBy: string;
+};
+
+export interface CreatedShapeEvent extends BaseEvent {
+	type: "createdShape";
+	shape: Shape;
+}
+
+export interface UpdatedShapeEvent extends BaseEvent {
+	type: "updatedShape";
+	shape: Shape;
+}
+
+export interface DeletedShapeEvent extends BaseEvent {
+	type: "deletedShape";
+	shapeId: string;
+}
+
+export interface BulkUpdateEvent extends BaseEvent {
+	type: "bulkUpdate";
+	shapes: Shape[];
+}
+
+export type Event =
+	| CreatedShapeEvent
+	| UpdatedShapeEvent
+	| DeletedShapeEvent
+	| BulkUpdateEvent;
 
 export interface BaseShape {
 	id: string;

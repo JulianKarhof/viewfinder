@@ -93,14 +93,13 @@ function connectWebSocket() {
 			console.log("reloading");
 			loadAndRenderShapes();
 		} else if (event.data === "reload-page") {
-			console.log("reloading page");
 			window.location.reload();
 		}
 	};
 
 	ws.onclose = () => {
-		console.log("WebSocket disconnected, reconnecting in 1 second...");
-		setTimeout(connectWebSocket, 1000);
+		console.log("WebSocket disconnected, reconnecting in 100 ms...");
+		setTimeout(connectWebSocket, 100);
 	};
 
 	ws.onerror = (error) => {

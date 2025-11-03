@@ -22,7 +22,7 @@ async function main() {
 		await runner.client(1).moveWindow({ x: 100, y: 100 });
 		await runner.client(2).moveWindow({ x: 200, y: 200 });
 
-		for (let i = 1; i < 5; i++) {
+		for (let i = 0; i < 5; i++) {
 			await runner.wait();
 			await runner.client(1).addRandomShapeInViewport();
 			await runner.wait();

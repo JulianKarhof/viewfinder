@@ -161,10 +161,6 @@ export function startServer(port: number = 3000) {
 				});
 			}
 
-			if (url.pathname === "/api/status") {
-				return new Response("OK");
-			}
-
 			return new Response("Not Found", { status: 404 });
 		},
 	});

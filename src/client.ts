@@ -13,6 +13,18 @@ interface ClientState {
 	shapes: Shape[];
 }
 
+export function generateClientColor(clientId: number): string {
+	const colors = [
+		"#ffbe0b",
+		"#ff006e",
+		"#3a86ff",
+		"#8338ec",
+		"#fb5607",
+		"#06d6a0",
+	];
+	return colors[clientId % colors.length];
+}
+
 export function startClient(
 	serverUrl: string = "ws://localhost:3000/ws",
 	id: number = Math.floor(Math.random() * 10000),
@@ -45,7 +57,7 @@ export function startClient(
 	};
 
 	ws.onerror = (error) => {
-		log.error("❌ WebSocket error:", error);
+		log.error("🚨 WebSocket error:", error);
 	};
 
 	function updateLocalState(update: MessageEvent) {
@@ -115,11 +127,6 @@ export function startClient(
 			handleCommand(message as CommandMessage);
 		}
 	});
-
-	function generateClientColor(clientId: number): string {
-		const colors = ["red", "blue", "green", "orange", "purple", "teal"];
-		return colors[clientId % colors.length];
-	}
 
 	function handleAction(action: Action) {
 		switch (action.type) {

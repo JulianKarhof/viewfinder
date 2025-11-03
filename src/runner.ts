@@ -75,6 +75,19 @@ export class ClientWrapper {
 		});
 	}
 
+	async updateShape(
+		shape: Omit<Partial<Shape> & Pick<Shape, "id" | "type">, "version">,
+	): Promise<CommandResponse> {
+		return this._runner.sendCommand(this._clientName, {
+			type: "sendAction",
+			action: {
+				type: "updateShape",
+				timestamp: Date.now(),
+				shape: shape,
+			},
+		});
+	}
+
 	async addRandomShapeInViewport(): Promise<CommandResponse> {
 		return this._runner.sendCommand(this._clientName, {
 			type: "sendAction",

@@ -5,17 +5,31 @@ export interface Canvas {
 
 export interface Client {
 	id: number;
-	location: {
-		x: number;
-		y: number;
-		width: number;
-		height: number;
-	};
+	viewport: Viewport;
+	lastSeenVersion: Map<string, number>;
+	connectedAt: number;
+}
+
+export interface Viewport {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
 }
 
 export interface BaseAction {
 	timestamp: number;
-	type: "addShape" | "moveShape" | "deleteShape" | "moveWindow";
+	type:
+		| "addShape"
+		| "updateShape"
+		| "deleteShape"
+		| "moveWindow"
+		| "bulkUpdate";
+}
+
+export interface BulkUpdateAction extends BaseAction {
+	type: "bulkUpdate";
+	shapes: Shape[];
 }
 
 export interface AddShapeAction extends BaseAction {
@@ -24,8 +38,8 @@ export interface AddShapeAction extends BaseAction {
 	shape?: Shape;
 }
 
-export interface MoveShapeAction extends BaseAction {
-	type: "moveShape";
+export interface UpdateShapeAction extends BaseAction {
+	type: "updateShape";
 	shape: Partial<Shape> & Pick<Shape, "id" | "type">;
 }
 
@@ -44,17 +58,20 @@ export interface MoveWindowAction extends BaseAction {
 
 export type Action =
 	| AddShapeAction
-	| MoveShapeAction
+	| UpdateShapeAction
 	| DeleteShapeAction
+	| BulkUpdateAction
 	| MoveWindowAction;
 
 export interface BaseShape {
 	id: string;
+	version: number;
 	type: "rectangle" | "circle";
 	x: number;
 	y: number;
 	color: string;
 	strokeWidth?: number;
+	isDeleted?: boolean;
 }
 
 export interface Circle extends BaseShape {

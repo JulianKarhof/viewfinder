@@ -1,6 +1,6 @@
 import db from "./db";
 import { logger } from "./logger";
-import type { Action } from "./types";
+import type { Action, Shape, Viewport } from "./types";
 
 const log = logger.server;
 
@@ -26,57 +26,123 @@ export function startServer(port: number = 3000) {
 					return;
 				}
 
-				log.debug("⬅️  Message from client", message);
+				log.debug("⬅️  Message from client", action);
 
 				switch (action.type) {
-					case "moveShape": {
-						db.shapes = db.shapes.map((shape) => {
-							if (String(shape.id) === String(action.shape.id)) {
-								const updatedShape = { ...shape };
-								Object.keys(action.shape).forEach((key) => {
-									const value = (action.shape as Record<string, unknown>)[key];
-									if (value !== undefined) {
-										(updatedShape as Record<string, unknown>)[key] = value;
-									}
-								});
-								return updatedShape;
+					case "updateShape": {
+						const shape = db.shapes.find(
+							(s) => String(s.id) === String(action.shape.id),
+						);
+						if (shape) {
+							Object.assign(shape, action.shape);
+							shape.version += 1;
+						}
+
+						db.clients.forEach((client) => {
+							if (!shape) return;
+							const shapesInViewport = getShapesInViewport(
+								[shape],
+								client.viewport,
+							);
+							if (shapesInViewport.length > 0) {
+								client.lastSeenVersion.set(String(shape.id), shape.version);
 							}
-							return shape;
 						});
 						break;
 					}
 					case "addShape": {
-						if (action.shape) {
-							db.shapes.push(action.shape);
-						}
-						break;
-					}
-					case "deleteShape": {
-						db.shapes = db.shapes.filter(
-							(shape) => String(shape.id) !== String(action.shape.id),
-						);
-						break;
-					}
-					case "moveWindow": {
-						const wsIndex = Array.from(clients).indexOf(ws);
-						db.clients = db.clients.map((client, index) => {
-							if (index === wsIndex) {
-								return {
-									...client,
-									location: {
-										...client.location,
-										x: action.location.x,
-										y: action.location.y,
-									},
-								};
+						if (!action.shape) break;
+						db.shapes.push(action.shape);
+						db.clients
+							.find((client) => client.id === ws.data.clientId)
+							?.lastSeenVersion.set(action.shape.id, action.shape.version);
+
+						db.clients.forEach((client) => {
+							if (!action.shape) return;
+							const shapesInViewport = getShapesInViewport(
+								[action.shape],
+								client.viewport,
+							);
+							if (shapesInViewport.length > 0) {
+								client.lastSeenVersion.set(
+									String(action.shape.id),
+									action.shape.version,
+								);
 							}
-							return client;
 						});
 						break;
 					}
-				}
+					case "deleteShape": {
+						const shape = db.shapes.find(
+							(s) => String(s.id) === String(action.shape.id),
+						);
 
-				log.debug(`➡️  Sending update to ${clients.size - 1} clients`);
+						if (!shape) break;
+						shape.isDeleted = true;
+						shape.version += 1;
+
+						db.clients.forEach((client) => {
+							if (!shape) return;
+							const shapesInViewport = getShapesInViewport(
+								[shape],
+								client.viewport,
+							);
+							if (shapesInViewport.length > 0) {
+								client.lastSeenVersion.set(String(shape.id), shape.version);
+							}
+						});
+
+						break;
+					}
+					case "moveWindow": {
+						const client = db.clients.find(
+							(client) => client.id === ws.data.clientId,
+						);
+						if (!client) {
+							log.error(`Client with id ${ws.data.clientId} not found`);
+							break;
+						}
+
+						client.viewport.x = action.location.x;
+						client.viewport.y = action.location.y;
+
+						const shapesInViewport = getShapesInViewport(
+							db.shapes,
+							client.viewport,
+						);
+
+						const shapesToSend = shapesInViewport.filter((shape) => {
+							const lastSeenVersion = client.lastSeenVersion.get(
+								String(shape.id),
+							);
+							if (lastSeenVersion === undefined) return true;
+							return shape.version > lastSeenVersion;
+						});
+
+						shapesInViewport.forEach((shape) => {
+							client.lastSeenVersion.set(String(shape.id), shape.version);
+						});
+
+						if (shapesToSend.length === 0) {
+							break;
+						}
+
+						const updateMessage = JSON.stringify({
+							type: "bulkUpdate",
+							shapes: shapesToSend,
+						});
+
+						log.debug(
+							`🔷 Sending ${shapesToSend.length} updated shapes to client ${ws.data.clientId}`,
+						);
+
+						ws.send(updateMessage);
+
+						break;
+					}
+					default:
+						log.warn(`⚠️ Unknown action type: ${action}`);
+				}
 
 				webClients.forEach((client) => {
 					if (client !== ws) {
@@ -86,9 +152,41 @@ export function startServer(port: number = 3000) {
 
 				if (action.type === "moveWindow") return;
 
+				let affectedShape: Shape | undefined;
+
+				switch (action.type) {
+					case "updateShape":
+					case "deleteShape": {
+						affectedShape = db.shapes.find(
+							(s) => String(s.id) === String(action.shape.id),
+						);
+						break;
+					}
+					case "addShape": {
+						affectedShape = action.shape;
+						break;
+					}
+				}
+
+				if (!affectedShape) return;
+
 				clients.forEach((client) => {
-					if (client !== ws) {
+					if (client === ws) return;
+
+					const dbClient = db.clients.find(
+						(c) => c.id === client.data.clientId,
+					);
+					if (!dbClient) return;
+
+					const shapesInViewport = getShapesInViewport(
+						[affectedShape],
+						dbClient.viewport,
+					);
+					if (shapesInViewport.length > 0) {
 						client.send(message);
+						log.debug(
+							`➡️  Sent update to client ${client.data.clientId} (shape is visible)`,
+						);
 					}
 				});
 			},
@@ -100,7 +198,9 @@ export function startServer(port: number = 3000) {
 					clients.add(ws);
 					db.clients.push({
 						id: ws.data?.clientId,
-						location: { x: 0, y: 0, height: 200, width: 300 },
+						viewport: { x: 0, y: 0, height: 200, width: 300 },
+						lastSeenVersion: new Map(),
+						connectedAt: Date.now(),
 					});
 				}
 
@@ -147,7 +247,7 @@ export function startServer(port: number = 3000) {
 				const isWeb = url.searchParams.get("client") === "web";
 				const clientId = url.searchParams.get("clientId");
 				const success = server.upgrade(req, {
-					data: { isWeb, clientId },
+					data: { isWeb, clientId: clientId ? parseInt(clientId, 10) : 0 },
 				});
 
 				return success
@@ -156,7 +256,14 @@ export function startServer(port: number = 3000) {
 			}
 
 			if (url.pathname === "/api/db") {
-				return new Response(JSON.stringify(db), {
+				const serializedDb = {
+					shapes: db.shapes,
+					clients: db.clients.map((client) => ({
+						...client,
+						lastSeenVersion: Object.fromEntries(client.lastSeenVersion),
+					})),
+				};
+				return new Response(JSON.stringify(serializedDb), {
 					headers: { "Content-Type": "application/json" },
 				});
 			}
@@ -164,6 +271,16 @@ export function startServer(port: number = 3000) {
 			return new Response("Not Found", { status: 404 });
 		},
 	});
+
+	function getShapesInViewport(shapes: Shape[], viewport: Viewport): Shape[] {
+		return shapes.filter(
+			(shape) =>
+				shape.x >= viewport.x &&
+				shape.x <= viewport.x + viewport.width &&
+				shape.y >= viewport.y &&
+				shape.y <= viewport.y + viewport.height,
+		);
+	}
 
 	log.info(`🔗 Server running at http://localhost:${server.port}`);
 

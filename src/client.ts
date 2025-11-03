@@ -66,20 +66,13 @@ export function startClient(
 		log.debug("🔄 Updating local state", action);
 
 		switch (action.type) {
-			case "moveShape": {
-				clientState.shapes = clientState.shapes.map((shape) => {
-					if (String(shape.id) === String(action.shape.id)) {
-						const updatedShape = { ...shape };
-						Object.keys(action.shape).forEach((key) => {
-							const value = (action.shape as Record<string, unknown>)[key];
-							if (value !== undefined) {
-								(updatedShape as Record<string, unknown>)[key] = value;
-							}
-						});
-						return updatedShape;
-					}
-					return shape;
-				});
+			case "updateShape": {
+				const shape = clientState.shapes.find(
+					(s) => String(s.id) === String(action.shape.id),
+				);
+				if (shape) {
+					Object.assign(shape, action.shape);
+				}
 				break;
 			}
 			case "addShape": {
@@ -91,6 +84,19 @@ export function startClient(
 					(shape) => String(shape.id) !== String(action.shape.id),
 				);
 				break;
+			}
+			case "bulkUpdate": {
+				action.shapes.forEach((updatedShape) => {
+					const shape = clientState.shapes.find(
+						(s) => String(s.id) === String(updatedShape.id),
+					);
+
+					if (shape) {
+						Object.assign(shape, updatedShape);
+					} else {
+						clientState.shapes.push(updatedShape);
+					}
+				});
 			}
 		}
 
@@ -134,6 +140,7 @@ export function startClient(
 				if (!action.shape) {
 					action.shape = {
 						id: `shape-${Date.now()}`,
+						version: 0,
 						type: "circle",
 						x:
 							clientState.location.x +
@@ -142,7 +149,7 @@ export function startClient(
 							clientState.location.y +
 							Math.random() * clientState.location.height,
 						color: generateClientColor(id),
-						radius: 10,
+						radius: 8,
 					};
 				}
 				break;

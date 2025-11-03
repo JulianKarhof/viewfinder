@@ -1,5 +1,13 @@
 import type { Canvas, Client, Shape } from "../types";
 
+interface SerializedClient extends Omit<Client, "lastSeenVersion"> {
+	lastSeenVersion: Record<string, number>;
+}
+
+interface SerializedCanvas extends Omit<Canvas, "clients"> {
+	clients: SerializedClient[];
+}
+
 const canvas = document.getElementById("canvas") as HTMLCanvasElement | null;
 if (!canvas) throw new Error("Canvas element not found");
 
@@ -24,17 +32,29 @@ function setupCanvas() {
 
 setupCanvas();
 
+function generateClientColor(clientId: number): string {
+	const colors = [
+		"#ffbe0b",
+		"#ff006e",
+		"#3a86ff",
+		"#8338ec",
+		"#fb5607",
+		"#06d6a0",
+	];
+	return colors[clientId % colors.length];
+}
+
 async function loadAndRenderShapes() {
 	if (!canvas || !ctx) return;
 
 	try {
 		const response = await fetch("/api/db");
-		const data: Canvas = await response.json();
+		const data: SerializedCanvas = await response.json();
 
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-		data.clients.forEach((client: Client) => {
-			const { x, y, width, height } = client.location;
+		data.clients.forEach((client: SerializedClient) => {
+			const { x, y, width, height } = client.viewport;
 
 			ctx.strokeStyle = "white";
 			ctx.lineWidth = 2;
@@ -44,7 +64,7 @@ async function loadAndRenderShapes() {
 			ctx.font = "16px Arial";
 			ctx.textAlign = "center";
 			ctx.textBaseline = "middle";
-			ctx.fillText(client.id.toString(), x + width / 2, y + height / 2);
+			ctx.fillText(client.id.toString(), x + 20, y + 20);
 		});
 
 		data.shapes.forEach((shape: Shape) => {
@@ -70,6 +90,40 @@ async function loadAndRenderShapes() {
 					ctx.strokeRect(shape.x, shape.y, shape.width, shape.height);
 				}
 			}
+
+			const clientsWhoHaveSeen = data.clients.filter(
+				(client: SerializedClient) => {
+					const lastSeenVersion = client.lastSeenVersion[shape.id];
+					return (
+						lastSeenVersion !== undefined && lastSeenVersion >= shape.version
+					);
+				},
+			);
+
+			clientsWhoHaveSeen.forEach((client: SerializedClient, index: number) => {
+				const clientColor = generateClientColor(client.id);
+				ctx.strokeStyle = clientColor;
+				ctx.lineWidth = 2;
+
+				const offset = index * 2 + 4;
+
+				if (shape.type === "circle" && shape.radius !== undefined) {
+					ctx.beginPath();
+					ctx.arc(shape.x, shape.y, shape.radius + offset, 0, Math.PI * 2);
+					ctx.stroke();
+				} else if (
+					shape.type === "rectangle" &&
+					shape.width !== undefined &&
+					shape.height !== undefined
+				) {
+					ctx.strokeRect(
+						shape.x - offset,
+						shape.y - offset,
+						shape.width + offset * 2,
+						shape.height + offset * 2,
+					);
+				}
+			});
 		});
 	} catch (error) {
 		console.error("Failed to load shapes:", error);

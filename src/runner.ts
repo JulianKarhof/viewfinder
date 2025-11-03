@@ -34,7 +34,7 @@ export class ClientWrapper {
 	private _runner: ProcessRunner;
 	private _clientId: number;
 
-	constructor(runner: ProcessRunner, clientId: number) {
+	public constructor(runner: ProcessRunner, clientId: number) {
 		this._runner = runner;
 		this._clientId = clientId;
 	}
@@ -43,11 +43,11 @@ export class ClientWrapper {
 		return `client-${this._clientId}`;
 	}
 
-	async ping(): Promise<boolean> {
+	public async ping(): Promise<boolean> {
 		return this._runner.sendPing(this._clientName);
 	}
 
-	async moveWindow(location: {
+	public async moveWindow(location: {
 		x: number;
 		y: number;
 	}): Promise<CommandResponse> {
@@ -60,7 +60,7 @@ export class ClientWrapper {
 	/**
 	 * Makes the client send an addShape command. If no shape is provided, the client will generate a random shape within its viewport coordinates.
 	 */
-	async addShape(
+	public async addShape(
 		shape: Shape,
 		coordinateMode: AddShapeAction["coordinateMode"] = "global",
 	): Promise<CommandResponse> {
@@ -75,7 +75,7 @@ export class ClientWrapper {
 		});
 	}
 
-	async updateShape(
+	public async updateShape(
 		shape: Omit<Partial<Shape> & Pick<Shape, "id" | "type">, "version">,
 	): Promise<CommandResponse> {
 		return this._runner.sendCommand(this._clientName, {
@@ -88,7 +88,7 @@ export class ClientWrapper {
 		});
 	}
 
-	async addRandomShapeInViewport(): Promise<CommandResponse> {
+	public async addRandomShapeInViewport(): Promise<CommandResponse> {
 		return this._runner.sendCommand(this._clientName, {
 			type: "sendAction",
 			action: {
@@ -99,14 +99,14 @@ export class ClientWrapper {
 		});
 	}
 
-	async sendAction(action: Action): Promise<CommandResponse> {
+	public async sendAction(action: Action): Promise<CommandResponse> {
 		return this._runner.sendCommand(this._clientName, {
 			type: "sendAction",
 			action,
 		});
 	}
 
-	async sendCommand(
+	public async sendCommand(
 		command: Command,
 		timeoutMs?: number,
 	): Promise<CommandResponse> {
@@ -136,7 +136,7 @@ export class ProcessRunner {
 	private _pendingResponses: Map<number, (response: CommandResponse) => void> =
 		new Map();
 
-	constructor() {
+	public constructor() {
 		process.on("SIGINT", () => this._shutdown());
 		process.on("SIGTERM", () => this._shutdown());
 	}
@@ -156,12 +156,12 @@ export class ProcessRunner {
 		}
 	}
 
-	async sendPing(processName: string): Promise<boolean> {
+	public async sendPing(processName: string): Promise<boolean> {
 		const response = await this.sendCommand(processName, { type: "ping" });
 		return response.success === true;
 	}
 
-	async sendCommand(
+	public async sendCommand(
 		processName: string,
 		command: Command,
 		timeoutMs: number = Settings.isDebugMode ? 60000 : 100,
@@ -265,7 +265,7 @@ export class ProcessRunner {
 			});
 	}
 
-	async startServer() {
+	public async startServer() {
 		if (this._server) {
 			throw new Error("🚨 Server is already running");
 		}
@@ -287,29 +287,7 @@ export class ProcessRunner {
 		log.info("🚀 Server started");
 	}
 
-	async startVisualizer() {
-		if (this._visualizer) {
-			throw new Error("🚨 Visualizer is already running");
-		}
-
-		log.info("⏳ Starting visualizer...");
-		const proc = spawn(["bun", "src/visualizer.ts"], {
-			stdout: "pipe",
-			stderr: "pipe",
-			stdin: "pipe",
-		});
-
-		this._visualizer = {
-			process: proc,
-			name: "visualizer",
-			startTime: new Date(),
-		};
-
-		this._handleLogs(this._visualizer);
-		log.info("🚀 Visualizer started");
-	}
-
-	async startClients(count: number) {
+	public async startClients(count: number) {
 		log.info(`⏳ Starting ${count} clients...`);
 
 		for (let i = 0; i < count; i++) {
@@ -352,7 +330,7 @@ export class ProcessRunner {
 		log.info(`🚀 ${count} clients started`);
 	}
 
-	getAllRunningProcesses(): ProcessInfo[] {
+	public getAllRunningProcesses(): ProcessInfo[] {
 		const processes: ProcessInfo[] = [];
 
 		if (this._server) processes.push(this._server);
@@ -362,7 +340,7 @@ export class ProcessRunner {
 		return processes;
 	}
 
-	getStatus() {
+	public getStatus() {
 		const running = this.getAllRunningProcesses();
 		return {
 			totalProcesses: running.length,
@@ -377,7 +355,7 @@ export class ProcessRunner {
 		};
 	}
 
-	async stopAll() {
+	public async stopAll() {
 		log.info("🛑 Stopping all processes...");
 
 		const processes = this.getAllRunningProcesses();
@@ -422,7 +400,7 @@ export class ProcessRunner {
 		log.info("✅ All processes stopped");
 	}
 
-	async waitForAllProcesses(timeout: number | null = null) {
+	public async waitForAllProcesses(timeout: number | null = null) {
 		if (!Settings.isDebugMode) return;
 
 		const processes = this.getAllRunningProcesses();
@@ -464,24 +442,24 @@ export class ProcessRunner {
 		}
 	}
 
-	async keepAlive() {
+	public async keepAlive() {
 		while (this.getAllRunningProcesses().length > 0 && !this._isShuttingDown) {
 			await new Promise((resolve) => setTimeout(resolve, 1000));
 		}
 	}
 
-	clients(): ClientWrapper[] {
+	public clients(): ClientWrapper[] {
 		return this._clients.map((_, index) => new ClientWrapper(this, index + 1));
 	}
 
-	client(clientId: number): ClientWrapper {
+	public client(clientId: number): ClientWrapper {
 		if (clientId > this._clients.length) {
 			throw new Error(`🚨 Client ${clientId} is not running`);
 		}
 		return new ClientWrapper(this, clientId);
 	}
 
-	async wait(ms: number = Settings.waitTime) {
+	public async wait(ms: number = Settings.waitTime) {
 		if (ms === 0) return;
 		log.info(`⏳ Waiting for ${ms}ms...`);
 		return new Promise((resolve) => setTimeout(resolve, ms));

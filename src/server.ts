@@ -1,18 +1,13 @@
+import { ClientManager, type WebSocketData } from "./clientManager";
 import db from "./db";
 import { logger } from "./logger";
-import type { Action, Shape, Viewport } from "./types";
+import type { Action, Shape } from "./types";
 
 const log = logger.server;
 
-interface WebSocketData {
-	isWeb?: boolean;
-	clientId: number;
-}
-
 export function startServer(port: number = 3000) {
 	process.title = "viewfinder:server";
-	const clients = new Set<Bun.ServerWebSocket<WebSocketData>>();
-	const webClients = new Set<Bun.ServerWebSocket<WebSocketData>>();
+	const clientManager = new ClientManager();
 
 	const server: Bun.Server = Bun.serve({
 		port,
@@ -36,40 +31,20 @@ export function startServer(port: number = 3000) {
 						if (shape) {
 							Object.assign(shape, action.shape);
 							shape.version += 1;
+							clientManager.updateLastSeenVersions(shape);
 						}
-
-						db.clients.forEach((client) => {
-							if (!shape) return;
-							const shapesInViewport = getShapesInViewport(
-								[shape],
-								client.viewport,
-							);
-							if (shapesInViewport.length > 0) {
-								client.lastSeenVersion.set(String(shape.id), shape.version);
-							}
-						});
 						break;
 					}
 					case "addShape": {
 						if (!action.shape) break;
 						db.shapes.push(action.shape);
-						db.clients
-							.find((client) => client.id === ws.data.clientId)
-							?.lastSeenVersion.set(action.shape.id, action.shape.version);
 
-						db.clients.forEach((client) => {
-							if (!action.shape) return;
-							const shapesInViewport = getShapesInViewport(
-								[action.shape],
-								client.viewport,
-							);
-							if (shapesInViewport.length > 0) {
-								client.lastSeenVersion.set(
-									String(action.shape.id),
-									action.shape.version,
-								);
-							}
-						});
+						const client = clientManager.get(ws.data.clientId);
+						if (client) {
+							client.lastSeenVersion.set(action.shape.id, action.shape.version);
+						}
+
+						clientManager.updateLastSeenVersions(action.shape);
 						break;
 					}
 					case "deleteShape": {
@@ -81,32 +56,19 @@ export function startServer(port: number = 3000) {
 						shape.isDeleted = true;
 						shape.version += 1;
 
-						db.clients.forEach((client) => {
-							if (!shape) return;
-							const shapesInViewport = getShapesInViewport(
-								[shape],
-								client.viewport,
-							);
-							if (shapesInViewport.length > 0) {
-								client.lastSeenVersion.set(String(shape.id), shape.version);
-							}
-						});
-
+						clientManager.updateLastSeenVersions(shape);
 						break;
 					}
 					case "moveWindow": {
-						const client = db.clients.find(
-							(client) => client.id === ws.data.clientId,
+						const client = clientManager.updateClientViewport(
+							ws.data.clientId,
+							action.location.x,
+							action.location.y,
 						);
-						if (!client) {
-							log.error(`Client with id ${ws.data.clientId} not found`);
-							break;
-						}
 
-						client.viewport.x = action.location.x;
-						client.viewport.y = action.location.y;
+						if (!client) break;
 
-						const shapesInViewport = getShapesInViewport(
+						const shapesInViewport = clientManager.getShapesInViewport(
 							db.shapes,
 							client.viewport,
 						);
@@ -137,18 +99,13 @@ export function startServer(port: number = 3000) {
 						);
 
 						ws.send(updateMessage);
-
 						break;
 					}
 					default:
 						log.warn(`⚠️ Unknown action type: ${action}`);
 				}
 
-				webClients.forEach((client) => {
-					if (client !== ws) {
-						client.send("reload");
-					}
-				});
+				clientManager.broadcastToWebClients("reload", ws);
 
 				if (action.type === "moveWindow") return;
 
@@ -168,41 +125,16 @@ export function startServer(port: number = 3000) {
 					}
 				}
 
-				if (!affectedShape) return;
-
-				clients.forEach((client) => {
-					if (client === ws) return;
-
-					const dbClient = db.clients.find(
-						(c) => c.id === client.data.clientId,
+				if (affectedShape) {
+					clientManager.sendToClientsInViewport(
+						affectedShape,
+						String(message),
+						ws,
 					);
-					if (!dbClient) return;
-
-					const shapesInViewport = getShapesInViewport(
-						[affectedShape],
-						dbClient.viewport,
-					);
-					if (shapesInViewport.length > 0) {
-						client.send(message);
-						log.debug(
-							`➡️  Sent update to client ${client.data.clientId} (shape is visible)`,
-						);
-					}
-				});
+				}
 			},
 			open(ws: Bun.ServerWebSocket<WebSocketData>) {
-				if (ws.data?.isWeb) {
-					webClients.add(ws);
-					log.info(`🤝 New web client connected (${webClients.size} total)`);
-				} else {
-					clients.add(ws);
-					db.clients.push({
-						id: ws.data?.clientId,
-						viewport: { x: 0, y: 0, height: 200, width: 300 },
-						lastSeenVersion: new Map(),
-						connectedAt: Date.now(),
-					});
-				}
+				clientManager.add(ws);
 
 				const initialMessage = JSON.stringify({
 					type: "dbInit",
@@ -211,11 +143,7 @@ export function startServer(port: number = 3000) {
 				ws.send(initialMessage);
 			},
 			close(ws: Bun.ServerWebSocket<WebSocketData>) {
-				if (ws.data?.isWeb) {
-					webClients.delete(ws);
-				} else {
-					clients.delete(ws);
-				}
+				clientManager.remove(ws);
 			},
 		},
 		async fetch(req) {
@@ -258,7 +186,7 @@ export function startServer(port: number = 3000) {
 			if (url.pathname === "/api/db") {
 				const serializedDb = {
 					shapes: db.shapes,
-					clients: db.clients.map((client) => ({
+					clients: clientManager.toDbFormat().map((client) => ({
 						...client,
 						lastSeenVersion: Object.fromEntries(client.lastSeenVersion),
 					})),
@@ -272,21 +200,11 @@ export function startServer(port: number = 3000) {
 		},
 	});
 
-	function getShapesInViewport(shapes: Shape[], viewport: Viewport): Shape[] {
-		return shapes.filter(
-			(shape) =>
-				shape.x >= viewport.x &&
-				shape.x <= viewport.x + viewport.width &&
-				shape.y >= viewport.y &&
-				shape.y <= viewport.y + viewport.height,
-		);
-	}
-
 	log.info(`🔗 Server running at http://localhost:${server.port}`);
 
 	return {
 		server,
-		clients,
+		clientManager,
 		stop: () => server.stop(),
 	};
 }

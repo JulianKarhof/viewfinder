@@ -1,13 +1,8 @@
 import { spawn } from "bun";
-import { Settings } from "./env.ts";
-import { logger } from "./logger.ts";
-import type {
-	Command,
-	CommandMessage,
-	CommandResponse,
-	CreateShapeCommand,
-	Shape,
-} from "./types.ts";
+import { Settings } from "../env.ts";
+import { logger } from "../logger.ts";
+import type { Command, CommandMessage, CommandResponse } from "../types.ts";
+import { ClientWrapper } from "./clientWrapper.ts";
 
 const log = logger.main;
 
@@ -15,71 +10,6 @@ interface ProcessInfo {
 	process: Bun.Subprocess<"pipe", "pipe", "pipe">;
 	name: string;
 	startTime: Date;
-}
-
-export class ClientWrapper {
-	private _runner: ProcessRunner;
-	private _clientId: number;
-
-	public constructor(runner: ProcessRunner, clientId: number) {
-		this._runner = runner;
-		this._clientId = clientId;
-	}
-
-	private get _clientName(): string {
-		return `client-${this._clientId}`;
-	}
-
-	public async ping(): Promise<boolean> {
-		return this._runner.sendPing(this._clientName);
-	}
-
-	public async moveWindow(location: {
-		x: number;
-		y: number;
-	}): Promise<CommandResponse> {
-		return this._runner.sendCommand(this._clientName, {
-			type: "moveWindow",
-			location,
-		});
-	}
-
-	/**
-	 * Makes the client send an addShape command. If no shape is provided, the client will generate a random shape within its viewport coordinates.
-	 */
-	public async addShape(
-		shape: Shape,
-		coordinateMode: CreateShapeCommand["coordinateMode"] = "global",
-	): Promise<CommandResponse> {
-		return this._runner.sendCommand(this._clientName, {
-			type: "addShape",
-			coordinateMode,
-			shape: shape,
-		});
-	}
-
-	public async updateShape(
-		shape: Omit<Partial<Shape> & Pick<Shape, "id" | "type">, "version">,
-	): Promise<CommandResponse> {
-		return this._runner.sendCommand(this._clientName, {
-			type: "updateShape",
-			shape: shape,
-		});
-	}
-
-	public async addRandomShapeInViewport(): Promise<CommandResponse> {
-		return this._runner.sendCommand(this._clientName, {
-			type: "addShape",
-			coordinateMode: "local",
-		});
-	}
-
-	public async sendCommand(
-		command: Command,
-		timeoutMs?: number,
-	): Promise<CommandResponse> {
-		return this._runner.sendCommand(this._clientName, command, timeoutMs);
-	}
 }
 
 export class ProcessRunner {
@@ -108,11 +38,6 @@ export class ProcessRunner {
 			log.info("✅ All processes have exited. Shutting down.");
 			process.exit(0);
 		}
-	}
-
-	public async sendPing(processName: string): Promise<boolean> {
-		const response = await this.sendCommand(processName, { type: "ping" });
-		return response.success === true;
 	}
 
 	public async sendCommand(
@@ -226,10 +151,14 @@ export class ProcessRunner {
 		}
 
 		log.info("⏳ Starting server...");
-		const proc = spawn(["bun", "src/server.ts"], {
+		const proc = spawn(["bun", "src/server/server.ts"], {
 			stdout: "pipe",
 			stderr: "pipe",
 			stdin: "pipe",
+			env: {
+				...process.env,
+				IS_SERVER: "true",
+			},
 		});
 
 		this._server = {
@@ -246,12 +175,13 @@ export class ProcessRunner {
 		log.info(`⏳ Starting ${count} clients...`);
 
 		for (let i = 0; i < count; i++) {
-			const proc = spawn(["bun", "src/client.ts"], {
+			const proc = spawn(["bun", "src/client/client.ts"], {
 				stdout: "pipe",
 				stderr: "pipe",
 				stdin: "pipe",
 				env: {
 					...process.env,
+					IS_CLIENT: "true",
 					CLIENT_ID: String(i + 1),
 				},
 				ipc: (message, _process) => {

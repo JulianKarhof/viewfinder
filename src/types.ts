@@ -22,7 +22,7 @@ export interface BaseCommand {
 }
 
 export interface CreateShapeCommand extends BaseCommand {
-	type: "addShape";
+	type: "createShape";
 	shape?: Shape;
 	coordinateMode?: "global" | "local";
 }

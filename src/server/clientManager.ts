@@ -1,5 +1,5 @@
-import { logger } from "./logger";
-import type { Client, Shape, Viewport } from "./types";
+import { logger } from "../logger";
+import type { Client, Shape, Viewport } from "../types";
 
 export interface ManagedClient {
 	id: number;

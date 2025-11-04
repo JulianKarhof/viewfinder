@@ -144,7 +144,6 @@ function connectWebSocket() {
 	ws.onmessage = (event) => {
 		console.log(event);
 		if (event.data === "reload") {
-			console.log("reloading");
 			loadAndRenderShapes();
 		} else if (event.data === "reload-page") {
 			window.location.reload();

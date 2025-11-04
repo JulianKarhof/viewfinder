@@ -1,3 +1,5 @@
+import { Settings } from "./env";
+
 export type LogLevel = "debug" | "info" | "warn" | "error";
 export type LogContext = "client" | "server" | "visual" | "misc" | "main";
 
@@ -6,6 +8,7 @@ interface LoggerOptions {
 	showTimestamp?: boolean;
 	showContext?: boolean;
 	showData?: boolean;
+	logLevel?: LogLevel;
 }
 
 interface LogEntry {
@@ -148,6 +151,15 @@ class Logger {
 		data?: unknown,
 		clientId?: number,
 	): void {
+		const logLevels: LogLevel[] = ["debug", "info", "warn", "error"];
+		const currentLevelIndex = logLevels.indexOf(
+			this._options.logLevel || "debug",
+		);
+		const messageLevelIndex = logLevels.indexOf(level);
+		if (messageLevelIndex < currentLevelIndex) {
+			return;
+		}
+
 		const entry: LogEntry = {
 			level,
 			context,
@@ -229,6 +241,9 @@ class Logger {
 	}
 }
 
-export const logger = new Logger({ showData: false });
+export const logger = new Logger({
+	showData: false,
+	logLevel: Settings.logLevel,
+});
 
 export { Logger };

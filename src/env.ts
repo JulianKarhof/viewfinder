@@ -3,13 +3,15 @@ class SettingsSingleton {
 
 	public readonly isDebugMode: boolean;
 	public readonly waitTime: number;
+	public readonly logLevel: "debug" | "info" | "warn" | "error" = "info";
 
 	private constructor() {
 		this.isDebugMode =
 			process.env.DEBUG === "true" || process.argv.includes("--debug");
 		this.waitTime = this.isDebugMode ? 500 : 0;
+		this.logLevel = this.isDebugMode ? "debug" : "info";
 
-		if (this.isDebugMode && !process.env.CLIENT_ID) {
+		if (this.isDebugMode && !process.env.IS_CLIENT && !process.env.IS_SERVER) {
 			console.log(`\n ${"=".repeat(60)}`);
 			console.log("🐛 DEBUG MODE ENABLED");
 			console.log("Remove debug flag for benchmarking!!");

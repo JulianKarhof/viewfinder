@@ -171,7 +171,6 @@ export class CommandHandler {
 		}
 
 		const steps = Math.min(Math.max(Math.ceil(distance / 30), 1), 8);
-		const intervalMs = Settings.waitTime;
 
 		let step = 0;
 		const interval = setInterval(() => {
@@ -188,7 +187,7 @@ export class CommandHandler {
 				this._moveWindow(targetX, targetY);
 				process.send?.(response);
 			}
-		}, intervalMs);
+		}, Settings.waitTime);
 
 		return response;
 	}

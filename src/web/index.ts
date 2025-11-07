@@ -53,20 +53,6 @@ async function loadAndRenderShapes() {
 
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-		data.clients.forEach((client: SerializedClient) => {
-			const { x, y, width, height } = client.viewport;
-
-			ctx.strokeStyle = "white";
-			ctx.lineWidth = 2;
-			ctx.strokeRect(x, y, width, height);
-
-			ctx.fillStyle = "white";
-			ctx.font = "16px Arial";
-			ctx.textAlign = "center";
-			ctx.textBaseline = "middle";
-			ctx.fillText(client.id.toString(), x + 20, y + 20);
-		});
-
 		data.shapes.forEach((shape: Shape) => {
 			ctx.fillStyle = shape.color;
 
@@ -123,6 +109,26 @@ async function loadAndRenderShapes() {
 						shape.height + offset * 2,
 					);
 				}
+			});
+
+			data.clients.forEach((client: SerializedClient) => {
+				const { x, y, width, height } = client.viewport;
+
+				ctx.strokeStyle = generateClientColor(client.id);
+				ctx.lineWidth = 1;
+				ctx.setLineDash([5, 5]);
+				ctx.strokeRect(x - 100, y - 100, width + 200, height + 200);
+				ctx.setLineDash([]);
+
+				ctx.strokeStyle = generateClientColor(client.id);
+				ctx.lineWidth = 2;
+				ctx.strokeRect(x, y, width, height);
+
+				ctx.fillStyle = "white";
+				ctx.font = "16px Arial";
+				ctx.textAlign = "center";
+				ctx.textBaseline = "middle";
+				ctx.fillText(client.id.toString(), x + 20, y + 20);
 			});
 		});
 	} catch (error) {

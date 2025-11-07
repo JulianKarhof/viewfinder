@@ -1,5 +1,5 @@
 import { logger } from "./logger";
-import { ProcessRunner } from "./runner";
+import { ProcessRunner } from "./runner/runner.ts";
 
 const log = logger.misc;
 
@@ -20,7 +20,7 @@ async function main() {
 		await runner.wait();
 
 		await runner.client(1).moveWindow({ x: 100, y: 100 });
-		await runner.client(2).moveWindow({ x: 200, y: 200 });
+		await runner.client(2).moveWindow({ x: 300, y: 300 });
 
 		for (let i = 0; i < 5; i++) {
 			await runner.wait();

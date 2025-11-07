@@ -134,13 +134,17 @@ export class ClientManager {
 		});
 	}
 
-	public getShapesInViewport(shapes: Shape[], viewport: Viewport): Shape[] {
+	public getShapesInViewport(
+		shapes: Shape[],
+		viewport: Viewport,
+		margin: number = 100,
+	): Shape[] {
 		return shapes.filter(
 			(shape) =>
-				shape.x >= viewport.x &&
-				shape.x <= viewport.x + viewport.width &&
-				shape.y >= viewport.y &&
-				shape.y <= viewport.y + viewport.height,
+				shape.x >= viewport.x - margin &&
+				shape.x <= viewport.x + viewport.width + margin &&
+				shape.y >= viewport.y - margin &&
+				shape.y <= viewport.y + viewport.height + margin,
 		);
 	}
 

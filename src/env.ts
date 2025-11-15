@@ -12,10 +12,10 @@ class SettingsSingleton {
 		this.logLevel = this.isDebugMode ? "debug" : "info";
 
 		if (this.isDebugMode && !process.env.IS_CLIENT && !process.env.IS_SERVER) {
-			console.log(`\n ${"=".repeat(60)}`);
+			console.log(`\n ${"=".repeat(50)}`);
 			console.log("🐛 DEBUG MODE ENABLED");
 			console.log("Remove debug flag for benchmarking!!");
-			console.log(`${"=".repeat(60)} \n`);
+			console.log(`${"=".repeat(50)} \n`);
 		}
 	}
 

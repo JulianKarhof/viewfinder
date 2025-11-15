@@ -1,5 +1,7 @@
+import * as microtime from "microtime";
+import SuperJSON from "superjson";
 import { logger } from "../logger";
-import type { Client, Shape, Viewport } from "../types";
+import type { Client, Event, Shape, Viewport } from "../types";
 
 export interface ManagedClient {
 	id: number;
@@ -15,10 +17,21 @@ export interface WebSocketData {
 	clientId: number;
 }
 
+export interface ClientManagerConfig {
+	enableViewportFiltering: boolean;
+}
+
 const log = logger.server;
 
 export class ClientManager {
 	private _clients = new Map<number, ManagedClient>();
+	private _config: ClientManagerConfig;
+
+	public constructor(
+		config: ClientManagerConfig = { enableViewportFiltering: true },
+	) {
+		this._config = config;
+	}
 
 	public add(ws: Bun.ServerWebSocket<WebSocketData>): void {
 		const clientId = ws.data.clientId;
@@ -65,13 +78,24 @@ export class ClientManager {
 		}
 	}
 
+	private _sendToClient(
+		client: Bun.ServerWebSocket<WebSocketData>,
+		event: Event,
+	) {
+		const timestampedEvent = {
+			...event,
+			serverSentAt: microtime.now(),
+		} as Event;
+		client.send(SuperJSON.stringify(timestampedEvent));
+	}
+
 	public broadcastToClients(
-		message: string,
+		event: Event,
 		excludeWs?: Bun.ServerWebSocket<WebSocketData>,
 	): void {
 		this.getClients().forEach((client) => {
 			if (client.ws !== excludeWs) {
-				client.ws.send(message);
+				this._sendToClient(client.ws, event);
 			}
 		});
 	}
@@ -89,19 +113,23 @@ export class ClientManager {
 
 	public sendToClientsInViewport(
 		shape: Shape,
-		message: string,
+		event: Event,
 		excludeWs?: Bun.ServerWebSocket<WebSocketData>,
 	): void {
 		this.getClients().forEach((client) => {
 			if (client.ws === excludeWs) return;
 
-			const shapesInViewport = this.getShapesInViewport(
-				[shape],
-				client.viewport,
-			);
-			if (shapesInViewport.length > 0) {
-				client.ws.send(message);
-				log.debug(`➡️  Sent update to client ${client.id} (shape is visible)`);
+			if (this._config.enableViewportFiltering) {
+				const shapesInViewport = this.getShapesInViewport(
+					[shape],
+					client.viewport,
+				);
+				if (shapesInViewport.length > 0) {
+					this._sendToClient(client.ws, event);
+				}
+			} else {
+				this._sendToClient(client.ws, event);
+				log.debug(`➡️  Sent update to client ${client.id}`);
 			}
 		});
 	}
@@ -124,11 +152,15 @@ export class ClientManager {
 
 	public updateLastSeenVersions(shape: Shape): void {
 		this.getClients().forEach((client) => {
-			const shapesInViewport = this.getShapesInViewport(
-				[shape],
-				client.viewport,
-			);
-			if (shapesInViewport.length > 0) {
+			if (this._config.enableViewportFiltering) {
+				const shapesInViewport = this.getShapesInViewport(
+					[shape],
+					client.viewport,
+				);
+				if (shapesInViewport.length > 0) {
+					client.lastSeenVersion.set(String(shape.id), shape.version);
+				}
+			} else {
 				client.lastSeenVersion.set(String(shape.id), shape.version);
 			}
 		});

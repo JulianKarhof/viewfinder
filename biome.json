@@ -19,6 +19,9 @@
 			"correctness": {
 				"noUnusedVariables": "error"
 			},
+			"complexity": {
+				"noStaticOnlyClass": "off"
+			},
 			"style": {
 				"noNamespace": "error",
 				"useAsConstAssertion": "error",

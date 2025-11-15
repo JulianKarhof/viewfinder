@@ -1,8 +1,14 @@
 import { spawn } from "bun";
 import { Settings } from "../env.ts";
 import { logger } from "../logger.ts";
-import type { Command, CommandMessage, CommandResponse } from "../types.ts";
+import type {
+	Command,
+	CommandMessage,
+	CommandResponse,
+	MetricsMessage,
+} from "../types.ts";
 import { ClientWrapper } from "./clientWrapper.ts";
+import type { BenchmarkCollector } from "./collector.ts";
 
 const log = logger.main;
 
@@ -19,10 +25,20 @@ export class ProcessRunner {
 	private _isShuttingDown = false;
 	private _pendingResponses: Map<string, (response: CommandResponse) => void> =
 		new Map();
+	private _collector: BenchmarkCollector | null = null;
+	private _serverConfig: { enableViewportFiltering?: boolean } = {};
 
 	public constructor() {
 		process.on("SIGINT", () => this._shutdown());
 		process.on("SIGTERM", () => this._shutdown());
+	}
+
+	public setCollector(collector: BenchmarkCollector) {
+		this._collector = collector;
+	}
+
+	public setServerConfig(config: { enableViewportFiltering?: boolean }) {
+		this._serverConfig = config;
 	}
 
 	private _cleanupProcess(name: string) {
@@ -48,6 +64,7 @@ export class ProcessRunner {
 		const process = this._findProcess(processName);
 		const commandMessage: CommandMessage = {
 			id: `cmd-${Date.now()}`,
+			type: "command",
 			timestamp: Date.now(),
 			command,
 		};
@@ -58,7 +75,7 @@ export class ProcessRunner {
 
 		process?.process.send?.(commandMessage);
 
-		return new Promise((resolve) => {
+		return await new Promise((resolve) => {
 			const timeoutId = setTimeout(() => {
 				this._pendingResponses.delete(commandMessage.id);
 				if (!Settings.isDebugMode) {
@@ -70,9 +87,10 @@ export class ProcessRunner {
 				log.warn(`⚠️  Command to ${processName} timed out after ${timeoutMs}ms`);
 				resolve({
 					id: commandMessage.id,
+					type: "response",
 					success: false,
 					error: `Command timeout after ${timeoutMs}ms`,
-				});
+				} as CommandResponse);
 			}, timeoutMs);
 
 			this._pendingResponses.set(commandMessage.id, (response) => {
@@ -158,6 +176,15 @@ export class ProcessRunner {
 			env: {
 				...process.env,
 				IS_SERVER: "true",
+				ENABLE_VIEWPORT_FILTERING: String(
+					this._serverConfig.enableViewportFiltering ?? true,
+				),
+			},
+			ipc: (message, _process) => {
+				if (message.type === "metrics") {
+					const metrics = message as MetricsMessage;
+					this._collector?.addMetrics(metrics.data);
+				}
 			},
 		});
 
@@ -175,6 +202,8 @@ export class ProcessRunner {
 		log.info(`⏳ Starting ${count} clients...`);
 
 		for (let i = 0; i < count; i++) {
+			const clientId = i + 1;
+
 			const proc = spawn(["bun", "src/client/client.ts"], {
 				stdout: "pipe",
 				stderr: "pipe",
@@ -182,10 +211,13 @@ export class ProcessRunner {
 				env: {
 					...process.env,
 					IS_CLIENT: "true",
-					CLIENT_ID: String(i + 1),
+					CLIENT_ID: String(clientId),
 				},
 				ipc: (message, _process) => {
-					if (message && typeof message === "object" && "id" in message) {
+					if (message.type === "metrics") {
+						const metrics = message as MetricsMessage;
+						this._collector?.addMetrics(metrics.data);
+					} else if (message.type === "response") {
 						const response = message as CommandResponse;
 						const callback = this._pendingResponses.get(response.id);
 						if (callback) {
@@ -204,7 +236,7 @@ export class ProcessRunner {
 
 			const clientInfo = {
 				process: proc,
-				name: `client-${i + 1}`,
+				name: `client-${clientId}`,
 				startTime: new Date(),
 			};
 

@@ -1,50 +1,70 @@
 import { logger } from "./logger";
-import { ProcessRunner } from "./runner/runner.ts";
+
+import {
+	runViewportDisabledBenchmark,
+	runViewportEnabledBenchmark,
+} from "./marks/viewport-comparison";
+import { BenchmarkCollector, type BenchmarkConfig } from "./runner/collector";
 
 const log = logger.misc;
 
 async function main() {
-	const startTime = Date.now();
-	const runner = new ProcessRunner();
+	const config: BenchmarkConfig = {
+		clientCount: 4,
+	};
 
+	await runViewportComparisonBenchmark(config);
+}
+
+async function runViewportComparisonBenchmark(config: BenchmarkConfig) {
+	const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+
+	console.log("🔬 Starting Viewport Filtering Comparison Benchmark");
+	console.log("=".repeat(50));
+
+	log.info("\n ✅ Running with viewport filtering ENABLED");
+	const collectorWithFiltering = new BenchmarkCollector(config);
+
+	collectorWithFiltering.startRun(1);
 	try {
-		await runner.startServer();
-
-		await runner.wait();
-
-		await runner.startClients(2);
-
-		await runner.client(1).ping();
-		await runner.client(2).ping();
-
-		await runner.wait();
-
-		await runner.client(1).moveWindow({ x: 100, y: 100 });
-		await runner.client(2).moveWindow({ x: 300, y: 300 });
-
-		for (let i = 0; i < 5; i++) {
-			await runner.wait();
-			await runner.client(1).addRandomShapeInViewport();
-			await runner.wait();
-			await runner.client(2).addRandomShapeInViewport();
-		}
-
-		await runner.client(1).moveWindow({ x: 200, y: 200 });
-		await runner.client(2).moveWindow({ x: 100, y: 100 });
-
-		await runner.waitForAllProcesses();
-		await runner.stopAll();
-
-		const endTime = Date.now();
-		const duration = endTime - startTime;
-		log.info(
-			`✅ Benchmarks completed successfully! Total time: ${duration}ms (${(duration / 1000).toFixed(2)}s)`,
-		);
+		await runViewportEnabledBenchmark(collectorWithFiltering);
+		log.info("✅ Viewport filtering enabled benchmark completed");
 	} catch (error) {
-		console.error("Error running processes:", error);
-		await runner.stopAll();
-		process.exit(1);
+		log.error("🚨 Viewport filtering enabled benchmark failed:", error);
+	} finally {
+		collectorWithFiltering.endRun();
 	}
+
+	const filenameWithFiltering = `results/viewport-enabled-${timestamp}.json`;
+	await collectorWithFiltering.saveResults(filenameWithFiltering);
+
+	log.info("❄️  Cooling down between benchmarks...");
+	await new Promise((resolve) => setTimeout(resolve, 2000));
+
+	log.info("\n🚫 Running with viewport filtering DISABLED");
+	const collectorWithoutFiltering = new BenchmarkCollector(config);
+
+	collectorWithoutFiltering.startRun(1);
+	try {
+		await runViewportDisabledBenchmark(collectorWithoutFiltering);
+		log.info("✅ Viewport filtering disabled benchmark completed");
+	} catch (error) {
+		log.error("🚨 Viewport filtering disabled benchmark failed:", error);
+	} finally {
+		collectorWithoutFiltering.endRun();
+	}
+
+	const filenameWithoutFiltering = `results/viewport-disabled-${timestamp}.json`;
+	await collectorWithoutFiltering.saveResults(filenameWithoutFiltering);
+
+	console.log("\n📊 VIEWPORT FILTERING COMPARISON RESULTS");
+	console.log("=".repeat(50));
+
+	console.log("\n🟢 WITH Viewport Filtering:");
+	collectorWithFiltering.printSummary();
+
+	console.log("\n🔴 WITHOUT Viewport Filtering:");
+	collectorWithoutFiltering.printSummary();
 }
 
 main();

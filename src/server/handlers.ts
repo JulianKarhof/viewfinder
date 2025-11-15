@@ -1,9 +1,12 @@
+import * as microtime from "microtime";
+import SuperJSON from "superjson";
 import db from "../db";
 import { logger } from "../logger";
 import type {
 	Command,
 	CreateShapeCommand,
 	DeleteShapeCommand,
+	Event,
 	MoveWindowCommand,
 	Shape,
 	UpdateShapeCommand,
@@ -18,7 +21,6 @@ export class ServerCommandHandler {
 	public handleCommand(
 		ws: Bun.ServerWebSocket<WebSocketData>,
 		command: Command,
-		message: string,
 	): void {
 		log.debug("⬅️  Message from client", command);
 
@@ -41,7 +43,7 @@ export class ServerCommandHandler {
 		}
 
 		this._clientManager.broadcastToWebClients("reload", ws);
-		this._handleShapeUpdate(ws, command, message);
+		this._handleShapeUpdate(ws, command);
 	}
 
 	private _handleUpdateShape(command: UpdateShapeCommand): void {
@@ -112,43 +114,65 @@ export class ServerCommandHandler {
 
 		if (shapesToSend.length === 0) return;
 
-		const updateMessage = JSON.stringify({
+		const updateEvent = {
 			type: "bulkUpdate",
 			shapes: shapesToSend,
-		});
+			serverSentAt: microtime.now(),
+		} as Event;
 
 		log.debug(
 			`🔷 Sending ${shapesToSend.length} updated shapes to client ${ws.data.clientId}`,
 		);
 
-		ws.send(updateMessage);
+		ws.send(SuperJSON.stringify(updateEvent));
 	}
 
 	private _handleShapeUpdate(
 		ws: Bun.ServerWebSocket<WebSocketData>,
 		command: Command,
-		message: string,
 	): void {
 		let affectedShape: Shape | undefined;
+		let event: Event | null = null;
 
 		switch (command.type) {
 			case "updateShape":
 				affectedShape = db.shapes.find(
 					(s) => String(s.id) === String(command.shape.id),
 				);
+				if (!affectedShape) break;
+				event = {
+					...command,
+					type: "updatedShape",
+					shape: affectedShape,
+				};
 				break;
 			case "deleteShape":
 				affectedShape = db.shapes.find(
 					(s) => String(s.id) === String(command.shapeId),
 				);
+				event = {
+					...command,
+					type: "deletedShape",
+				};
 				break;
 			case "createShape":
 				affectedShape = command.shape;
+				if (!affectedShape) break;
+				event = {
+					...command,
+					type: "createdShape",
+					shape: affectedShape,
+				};
 				break;
 		}
 
+		if (event === null) {
+			log.warn(`⚠️ Unable to determine event type for command: ${command}`);
+			return;
+		}
+
 		if (affectedShape) {
-			this._clientManager.sendToClientsInViewport(affectedShape, message, ws);
+			this._clientManager.sendToClientsInViewport(affectedShape, event, ws);
 		}
 	}
 }

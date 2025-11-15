@@ -94,7 +94,11 @@ export class CommandHandler {
 
 	public handleCommand(message: CommandMessage): CommandResponse {
 		const { command } = message;
-		const response: CommandResponse = { id: message.id, success: true };
+		const response: CommandResponse = {
+			id: message.id,
+			success: true,
+			type: "response",
+		};
 
 		switch (command.type) {
 			case "ping":
@@ -124,7 +128,7 @@ export class CommandHandler {
 	): CommandResponse {
 		if (!command.shape) {
 			command.shape = {
-				id: `shape-${Date.now()}`,
+				id: `shape-${Date.now}`,
 				version: 0,
 				type: "circle",
 				x:

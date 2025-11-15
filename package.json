@@ -3,7 +3,8 @@
 	"module": "index.ts",
 	"devDependencies": {
 		"@biomejs/biome": "2.2.2",
-		"@types/bun": "latest"
+		"@types/bun": "latest",
+		"@types/microtime": "^2.1.2"
 	},
 	"peerDependencies": {
 		"typescript": "^5.0.0"
@@ -16,5 +17,9 @@
 		"lint": "biome lint .",
 		"typecheck": "tsc --noEmit"
 	},
-	"type": "module"
+	"type": "module",
+	"dependencies": {
+		"microtime": "^3.1.1",
+		"superjson": "^2.2.5"
+	}
 }

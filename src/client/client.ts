@@ -1,6 +1,15 @@
+import * as microtime from "microtime";
+import { SuperJSON } from "superjson";
 import { logger } from "../logger.ts";
-import type { Command, CommandMessage, Event, Shape } from "../types.ts";
+import type {
+	Command,
+	CommandMessage,
+	Event,
+	MetricsMessage,
+	Shape,
+} from "../types.ts";
 import { CommandHandler, EventHandler } from "./handlers.ts";
+import { ClientMetricsCollector } from "./metrics.ts";
 
 export interface ClientState {
 	location: {
@@ -31,6 +40,9 @@ export function startClient(
 	const log = logger.client(id);
 	process.title = `viewfinder:client:${id}`;
 	const ws = new WebSocket(`${serverUrl}?clientId=${id}`);
+	const metricsCollector = new ClientMetricsCollector();
+
+	metricsCollector.startCollection();
 
 	const clientState: ClientState = {
 		location: {
@@ -47,7 +59,14 @@ export function startClient(
 	function sendMessage(command: Command) {
 		if (ws.readyState === WebSocket.OPEN) {
 			log.debug("💬 Sending message", command);
-			ws.send(JSON.stringify(command));
+			metricsCollector.trackMessage(command, "out");
+
+			const timestampedCommand: Command = {
+				...command,
+				clientSentAt: microtime.now(),
+				origin: id,
+			};
+			ws.send(SuperJSON.stringify(timestampedCommand));
 		} else {
 			log.debug("📥 Queueing message for when connection opens", command);
 			messageQueue.push(command);
@@ -64,19 +83,52 @@ export function startClient(
 			const command = messageQueue.shift();
 			if (command) {
 				log.debug("💬 Sending queued message", command);
-				ws.send(JSON.stringify(command));
+				metricsCollector.trackMessage(command, "out");
+
+				const timestampedCommand: Command = {
+					...command,
+					clientSentAt: microtime.now(),
+					origin: id,
+				};
+				ws.send(SuperJSON.stringify(timestampedCommand));
 			}
 		}
 	};
 
 	ws.onmessage = (update) => {
+		const event: Event = SuperJSON.parse(update.data) as unknown as Event;
+
+		if (event.origin && id === event.origin) {
+			throw new Error("🚨 Received own message back from server");
+		}
+
+		metricsCollector.trackMessage(update.data, "in");
+
+		if (event.origin) {
+			process.send?.({
+				type: "metrics",
+				data: {
+					dataType: "latency",
+					clientId: event.origin,
+					targetClientId: id,
+					clientToClientUs: microtime.now() - (event.clientSentAt || 0),
+					clientToServerUs:
+						(event.serverReceivedAt || 0) - (event.clientSentAt || 0),
+					serverToClientUs: microtime.now() - (event.serverReceivedAt || 0),
+					operation: event.type,
+					processId: `client-${id}`,
+					timestamp: Date.now(),
+				},
+			} as MetricsMessage);
+		}
+
 		log.debug("💬 Websocket message received", update);
-		const event: Event = JSON.parse(update.data) as unknown as Event;
 		eventHandler.handleEvent(event);
 	};
 
 	ws.onclose = () => {
 		log.info("🔌 Connection closed");
+		metricsCollector.stopCollection();
 	};
 
 	ws.onerror = (error) => {
@@ -90,10 +142,18 @@ export function startClient(
 		}
 	});
 
+	process.on("SIGTERM", () => {
+		metricsCollector.stopCollection();
+		process.exit(0);
+	});
+
 	return {
 		ws,
 		sendMessage,
-		close: () => ws.close(),
+		close: () => {
+			metricsCollector.stopCollection();
+			ws.close();
+		},
 	};
 }
 

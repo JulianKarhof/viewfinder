@@ -19,6 +19,10 @@ export interface Viewport {
 
 export interface BaseCommand {
 	type: string;
+
+	origin?: number;
+	clientSentAt?: number;
+	serverReceivedAt?: number;
 }
 
 export interface CreateShapeCommand extends BaseCommand {
@@ -58,20 +62,24 @@ export type Command =
 
 export type CommandMessage = {
 	id: string;
+	type: "command";
 	timestamp: number;
 	command: Command;
 };
 
 export interface CommandResponse {
 	id: string;
+	type: "response";
 	success: boolean;
 	error?: string;
 }
 
 export type BaseEvent = {
-	id: string;
-	timestamp: number;
-	causedBy: string;
+	origin?: number;
+	clientSentAt?: number;
+	serverReceivedAt?: number;
+	serverSentAt?: number;
+	clientReceivedAt?: number;
 };
 
 export interface CreatedShapeEvent extends BaseEvent {
@@ -123,3 +131,46 @@ export interface Rectangle extends BaseShape {
 }
 
 export type Shape = Circle | Rectangle;
+
+interface BaseMetrics {
+	timestamp: number;
+	processId: string;
+}
+
+export interface ThroughputMetrics extends BaseMetrics {
+	dataType: "throughput";
+	clientId: number;
+	bytesReceived: number;
+	bytesSent: number;
+	messageCount?: number;
+	avgMessageSize?: number;
+}
+
+export interface ServerMetrics extends BaseMetrics {
+	dataType: "serverMetrics";
+	cpuPercent: number;
+	memoryMB: number;
+	heapUsedMB: number;
+	heapTotalMB: number;
+	activeConnections: number;
+	loadAverage?: number[];
+	uptime?: number;
+}
+
+export interface LatencyMetrics extends BaseMetrics {
+	dataType: "latency";
+	operation: string;
+	clientToServerUs: number;
+	serverToClientUs: number;
+	clientToClientUs: number;
+	clientId?: number;
+	targetClientId?: number;
+	messageSize?: number;
+}
+
+export type MetricsData = ThroughputMetrics | ServerMetrics | LatencyMetrics;
+
+export interface MetricsMessage {
+	type: "metrics";
+	data: MetricsData;
+}

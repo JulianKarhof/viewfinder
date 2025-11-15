@@ -1,7 +1,14 @@
+import SuperJSON from "superjson";
 import { Settings } from "./env";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
-export type LogContext = "client" | "server" | "visual" | "misc" | "main";
+export type LogContext =
+	| "client"
+	| "server"
+	| "visual"
+	| "misc"
+	| "main"
+	| "collector";
 
 interface LoggerOptions {
 	useColors?: boolean;
@@ -56,6 +63,7 @@ class Logger {
 		visual: Logger._colors.green,
 		misc: Logger._colors.white,
 		main: Logger._colors.yellow,
+		collector: Logger._colors.cyan,
 	};
 
 	public constructor(options: LoggerOptions = {}) {
@@ -123,7 +131,7 @@ class Logger {
 						type: messageEvent.type,
 						data: (() => {
 							try {
-								return JSON.parse(messageEvent.data);
+								return SuperJSON.parse(messageEvent.data);
 							} catch {
 								return messageEvent.data;
 							}
@@ -222,6 +230,7 @@ class Logger {
 	public visualizer = this._createContextLogger("visual");
 	public misc = this._createContextLogger("misc");
 	public main = this._createContextLogger("main");
+	public collector = this._createContextLogger("collector");
 
 	private _createContextLogger(context: LogContext, id?: number) {
 		return {

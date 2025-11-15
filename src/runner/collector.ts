@@ -6,6 +6,7 @@ import type {
 	ServerMetrics,
 	ThroughputMetrics,
 } from "../types";
+import { initializeRandom } from "../utils/seededRandom";
 
 export interface BenchmarkConfig {
 	clientCount: number;
@@ -131,8 +132,14 @@ export class BenchmarkCollector {
 			config: this._config,
 		};
 
+		const seed = 42;
+		initializeRandom(seed);
+		process.env.RANDOM_SEED = String(seed);
+
 		this._currentRunData = [];
-		console.log(`📊 Started benchmark run ${runIndex} (${runId})`);
+		console.log(
+			`📊 Started benchmark run ${runIndex} (${runId}) with seed ${seed}`,
+		);
 	}
 
 	public endRun(): void {

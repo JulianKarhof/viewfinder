@@ -1,5 +1,6 @@
 import type { BenchmarkCollector } from "../runner/collector";
 import { ProcessRunner } from "../runner/runner";
+import { seededRandom } from "../utils/seededRandom.js";
 
 export async function runViewportFilteringBenchmark(
 	collector: BenchmarkCollector,
@@ -56,8 +57,8 @@ export async function runViewportFilteringBenchmark(
 			const clientId = (i % 4) + 1;
 			await runner.wait();
 			await runner.client(clientId).moveWindow({
-				x: Math.random() * 600,
-				y: Math.random() * 600,
+				x: seededRandom() * 600,
+				y: seededRandom() * 600,
 			});
 		}
 

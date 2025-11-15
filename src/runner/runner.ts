@@ -212,6 +212,7 @@ export class ProcessRunner {
 					...process.env,
 					IS_CLIENT: "true",
 					CLIENT_ID: String(clientId),
+					RANDOM_SEED: process.env.RANDOM_SEED || "0",
 				},
 				ipc: (message, _process) => {
 					if (message.type === "metrics") {

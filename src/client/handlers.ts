@@ -12,6 +12,7 @@ import type {
 	MoveWindowCommand,
 	UpdatedShapeEvent,
 } from "../types.ts";
+import { seededRandom } from "../utils/seededRandom.js";
 import { type ClientState, generateClientColor } from "./client.ts";
 
 export class EventHandler {
@@ -133,10 +134,10 @@ export class CommandHandler {
 				type: "circle",
 				x:
 					this._clientState.location.x +
-					Math.random() * this._clientState.location.width,
+					seededRandom() * this._clientState.location.width,
 				y:
 					this._clientState.location.y +
-					Math.random() * this._clientState.location.height,
+					seededRandom() * this._clientState.location.height,
 				color: generateClientColor(this._clientId),
 				radius: 8,
 			};

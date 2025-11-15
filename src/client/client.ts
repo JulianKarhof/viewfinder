@@ -8,6 +8,7 @@ import type {
 	MetricsMessage,
 	Shape,
 } from "../types.ts";
+import { initializeRandom } from "../utils/seededRandom.js";
 import { CommandHandler, EventHandler } from "./handlers.ts";
 import { ClientMetricsCollector } from "./metrics.ts";
 
@@ -158,6 +159,11 @@ export function startClient(
 }
 
 if (import.meta.main) {
+	const seed = Number.parseInt(process.env.RANDOM_SEED || "0", 10);
+	if (seed > 0) {
+		initializeRandom(seed);
+	}
+
 	startClient(
 		undefined,
 		Number.parseInt(process.env.CLIENT_ID || "", 10) ||

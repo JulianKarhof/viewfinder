@@ -1,11 +1,10 @@
 import SuperJSON from "superjson";
-import type { Command, MetricsMessage } from "../types";
+import type { Command, Event, MetricsMessage } from "../types";
 
 export class ClientMetricsCollector {
 	private _bytesReceived = 0;
 	private _bytesSent = 0;
 	private _messageCount = 0;
-	private _intervalId: NodeJS.Timeout | null = null;
 
 	public trackMessage(message: Command | Event, direction: "in" | "out") {
 		const bytes = new TextEncoder().encode(SuperJSON.stringify(message)).length;
@@ -14,20 +13,7 @@ export class ClientMetricsCollector {
 		this._messageCount++;
 	}
 
-	public startCollection() {
-		this._intervalId = setInterval(() => {
-			this.sendMetricsToMain();
-		}, 1);
-	}
-
-	public stopCollection() {
-		if (this._intervalId) {
-			clearInterval(this._intervalId);
-			this._intervalId = null;
-		}
-	}
-
-	public sendMetricsToMain() {
+	public sendFinalMetrics() {
 		process.send?.({
 			type: "metrics",
 			data: {

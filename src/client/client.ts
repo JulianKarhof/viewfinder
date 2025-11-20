@@ -43,8 +43,6 @@ export function startClient(
 	const ws = new WebSocket(`${serverUrl}?clientId=${id}`);
 	const metricsCollector = new ClientMetricsCollector();
 
-	metricsCollector.startCollection();
-
 	const clientState: ClientState = {
 		location: {
 			x: 0,
@@ -103,7 +101,7 @@ export function startClient(
 			throw new Error("🚨 Received own message back from server");
 		}
 
-		metricsCollector.trackMessage(update.data, "in");
+		metricsCollector.trackMessage(event, "in");
 
 		if (event.origin) {
 			process.send?.({
@@ -129,7 +127,6 @@ export function startClient(
 
 	ws.onclose = () => {
 		log.info("🔌 Connection closed");
-		metricsCollector.stopCollection();
 	};
 
 	ws.onerror = (error) => {
@@ -144,7 +141,7 @@ export function startClient(
 	});
 
 	process.on("SIGTERM", () => {
-		metricsCollector.stopCollection();
+		metricsCollector.sendFinalMetrics();
 		process.exit(0);
 	});
 
@@ -152,7 +149,7 @@ export function startClient(
 		ws,
 		sendMessage,
 		close: () => {
-			metricsCollector.stopCollection();
+			metricsCollector.sendFinalMetrics();
 			ws.close();
 		},
 	};

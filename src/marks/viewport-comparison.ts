@@ -15,8 +15,12 @@ export async function runViewportFilteringBenchmark(
 		await runner.startServer();
 		await runner.wait();
 
+		await new Promise((resolve) => setTimeout(resolve, 1000));
+
 		await runner.startClients(4);
 		await runner.wait();
+
+		await new Promise((resolve) => setTimeout(resolve, 500));
 
 		await runner.client(1).moveWindow({ x: 0, y: 0 });
 		await runner.client(2).moveWindow({ x: 500, y: 0 });

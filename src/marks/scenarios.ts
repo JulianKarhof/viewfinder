@@ -3,6 +3,8 @@ import type { BenchmarkCollector } from "../runner/collector";
 import { ProcessRunner } from "../runner/runner";
 import { seededRandom } from "../utils/seededRandom";
 
+const shapeCountMultiplier = Settings.isDebugMode ? 1 : 100;
+
 /**
  * Complete Overlap
  * All clients remain in the same viewport space throughout the benchmark.
@@ -33,7 +35,7 @@ export async function runCompleteOverlapScenario(
 		await runner.wait();
 
 		// All clients create shapes in the same overlapping space
-		for (let i = 0; i < (Settings.isDebugMode ? 5 : 500); i++) {
+		for (let i = 0; i < 5 * shapeCountMultiplier; i++) {
 			await runner.client(1).createShapeInViewport();
 			await runner.client(2).createShapeInViewport();
 			await runner.client(3).createShapeInViewport();
@@ -41,7 +43,7 @@ export async function runCompleteOverlapScenario(
 		}
 
 		// Continue adding shapes in the shared space
-		for (let i = 0; i < (Settings.isDebugMode ? 2 : 200); i++) {
+		for (let i = 0; i < 2 * shapeCountMultiplier; i++) {
 			const clientId = (i % 4) + 1;
 			await runner.client(clientId).createShapeInViewport();
 			await runner.wait();
@@ -83,7 +85,7 @@ export async function runNoOverlapScenario(
 		await runner.wait();
 
 		// Each client creates shapes in their isolated viewports
-		for (let i = 0; i < (Settings.isDebugMode ? 5 : 500); i++) {
+		for (let i = 0; i < 5 * shapeCountMultiplier; i++) {
 			await runner.client(1).createShapeInViewport();
 			await runner.wait();
 			await runner.client(2).createShapeInViewport();
@@ -138,7 +140,7 @@ export async function runAverageUseCaseScenario(
 		await runner.wait();
 
 		// Create objects in isolation in each corner
-		for (let i = 0; i < (Settings.isDebugMode ? 15 : 150); i++) {
+		for (let i = 0; i < 15 * shapeCountMultiplier; i++) {
 			const clientId = (i % 4) + 1;
 
 			const result = await runner.client(clientId).createShapeInViewport();
@@ -185,7 +187,7 @@ export async function runAverageUseCaseScenario(
 		});
 		await runner.wait();
 
-		for (let i = 0; i < (Settings.isDebugMode ? 10 : 1000); i++) {
+		for (let i = 0; i < 10 * shapeCountMultiplier; i++) {
 			const clientId = (i % 4) + 1;
 			await runner.client(clientId).createShapeInViewport();
 			await runner.wait();

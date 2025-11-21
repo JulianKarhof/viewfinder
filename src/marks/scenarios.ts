@@ -20,10 +20,10 @@ export async function runCompleteOverlapScenario(
 
 	try {
 		await runner.startServer();
-		await runner.wait();
+		await runner.waitForServerReady();
 
 		await runner.startClients(4);
-		await runner.wait();
+		await runner.waitForAllClientsReady();
 
 		// All clients move to the same viewport area
 		const sharedLocation = { x: 200, y: 200 };
@@ -72,10 +72,10 @@ export async function runNoOverlapScenario(
 
 	try {
 		await runner.startServer();
-		await runner.wait();
+		await runner.waitForServerReady();
 
 		await runner.startClients(4);
-		await runner.wait();
+		await runner.waitForAllClientsReady();
 
 		// Position clients in completely separate areas
 		await runner.client(1).moveWindow({ x: 0, y: 0 });
@@ -127,10 +127,10 @@ export async function runAverageUseCaseScenario(
 
 	try {
 		await runner.startServer();
-		await runner.wait();
+		await runner.waitForServerReady();
 
 		await runner.startClients(4);
-		await runner.wait();
+		await runner.waitForAllClientsReady();
 
 		// Phase 1: Move clients to separate corners of the canvas
 		await runner.client(1).moveWindow({ x: 0, y: 0 });
@@ -154,7 +154,10 @@ export async function runAverageUseCaseScenario(
 		const centerY = 400;
 
 		for (let clientId = 1; clientId <= 4; clientId++) {
-			const shapesToMove = createdShapes[clientId].slice(0, 25);
+			const shapesToMove = createdShapes[clientId].slice(
+				0,
+				5 * shapeCountMultiplier,
+			);
 
 			for (let i = 0; i < shapesToMove.length; i++) {
 				const shape = shapesToMove[i];

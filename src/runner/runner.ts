@@ -27,6 +27,9 @@ export class ProcessRunner {
 		new Map();
 	private _collector: BenchmarkCollector | null = null;
 	private _serverConfig: { enableViewportFiltering?: boolean } = {};
+	private _readyProcesses: Set<string> = new Set();
+	private _startupPromises: Map<string, Promise<void>> = new Map();
+	private _startupResolvers: Map<string, () => void> = new Map();
 
 	public constructor() {
 		process.on("SIGINT", () => this._shutdown());
@@ -184,6 +187,8 @@ export class ProcessRunner {
 				if (message.type === "metrics") {
 					const metrics = message as MetricsMessage;
 					this._collector?.addMetrics(metrics.data);
+				} else if (message.type === "ready") {
+					this._handleProcessReady("server");
 				}
 			},
 		});
@@ -195,7 +200,52 @@ export class ProcessRunner {
 		};
 
 		this._handleLogs(this._server);
+
+		this._setupStartupPromise("server");
+
 		log.info("🚀 Server started");
+	}
+
+	private _setupStartupPromise(processName: string): void {
+		if (!this._startupPromises.has(processName)) {
+			const promise = new Promise<void>((resolve) => {
+				this._startupResolvers.set(processName, resolve);
+			});
+			this._startupPromises.set(processName, promise);
+		}
+	}
+
+	private _handleProcessReady(processName: string): void {
+		log.info(`✅ Process ${processName} is ready`);
+		this._readyProcesses.add(processName);
+
+		const resolver = this._startupResolvers.get(processName);
+		if (resolver) {
+			resolver();
+			this._startupResolvers.delete(processName);
+		}
+	}
+
+	public async waitForServerReady(): Promise<void> {
+		const promise = this._startupPromises.get("server");
+		if (promise) {
+			await promise;
+		}
+	}
+
+	public async waitForClientReady(clientId: number): Promise<void> {
+		const clientName = `client-${clientId}`;
+		const promise = this._startupPromises.get(clientName);
+		if (promise) {
+			await promise;
+		}
+	}
+
+	public async waitForAllClientsReady(): Promise<void> {
+		const promises = this._clients.map((_, index) =>
+			this.waitForClientReady(index + 1),
+		);
+		await Promise.all(promises);
 	}
 
 	public async startClients(count: number) {
@@ -231,6 +281,8 @@ export class ProcessRunner {
 							);
 							log.warn(`⚠️  Unmatched IPC message: ${JSON.stringify(response)}`);
 						}
+					} else if (message.type === "ready") {
+						this._handleProcessReady(`client-${clientId}`);
 					}
 				},
 			});
@@ -243,6 +295,8 @@ export class ProcessRunner {
 
 			this._clients.push(clientInfo);
 			this._handleLogs(clientInfo);
+
+			this._setupStartupPromise(`client-${clientId}`);
 		}
 
 		log.info(`🚀 ${count} clients started`);

@@ -7,6 +7,7 @@ import type {
 	Event,
 	MetricsMessage,
 	Shape,
+	StartupReadyMessage,
 } from "../types.ts";
 import { initializeRandom } from "../utils/seededRandom.js";
 import { CommandHandler, EventHandler } from "./handlers.ts";
@@ -77,6 +78,13 @@ export function startClient(
 
 	ws.onopen = () => {
 		log.info(`🔗 Connected to ${serverUrl}`);
+
+		process.send?.({
+			type: "ready",
+			processType: "client",
+			processId: `client-${id}`,
+			timestamp: Date.now(),
+		} as StartupReadyMessage);
 
 		while (messageQueue.length > 0) {
 			const command = messageQueue.shift();

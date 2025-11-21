@@ -175,3 +175,16 @@ export interface MetricsMessage {
 	type: "metrics";
 	data: MetricsData;
 }
+
+export interface StartupReadyMessage {
+	type: "ready";
+	processType: "server" | "client";
+	processId?: string;
+	timestamp: number;
+}
+
+export interface StartupAckMessage {
+	type: "startup_ack";
+	processId: string;
+	timestamp: number;
+}

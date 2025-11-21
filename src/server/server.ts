@@ -2,7 +2,7 @@ import * as microtime from "microtime";
 import SuperJSON from "superjson";
 import db from "../db";
 import { logger } from "../logger";
-import type { Command } from "../types";
+import type { Command, StartupReadyMessage } from "../types";
 import { ClientManager, type WebSocketData } from "./clientManager";
 import { ServerCommandHandler } from "./handlers";
 import { ServerMetricsCollector } from "./metrics";
@@ -117,6 +117,13 @@ export function startServer(
 	});
 
 	log.info(`🔗 Server running at http://localhost:${server.port}`);
+
+	process.send?.({
+		type: "ready",
+		processType: "server",
+		processId: "server",
+		timestamp: Date.now(),
+	} as StartupReadyMessage);
 
 	process.on("SIGTERM", () => {
 		metricsCollector.stopCollection();

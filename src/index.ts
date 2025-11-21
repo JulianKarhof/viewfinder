@@ -1,5 +1,10 @@
 import { logger } from "./logger";
-import { runScenario, type ScenarioKey, scenarios } from "./marks/scenarios";
+import {
+	runScenario,
+	runWarmup,
+	type ScenarioKey,
+	scenarios,
+} from "./marks/scenarios";
 import { BenchmarkCollector, type BenchmarkConfig } from "./runner/collector";
 
 const log = logger.misc;
@@ -55,6 +60,12 @@ async function runScenarioBenchmark(
 
 	console.log(`🔬 Starting ${displayName} Scenario Benchmark`);
 	console.log("=".repeat(50));
+
+	console.log("\n🔥 Warming up...");
+	await runWarmup();
+	console.log("✅ Warmup complete\n");
+
+	await new Promise((resolve) => setTimeout(resolve, 1000));
 
 	log.info("✅ Running with viewport filtering ENABLED");
 	const collectorWithFiltering = new BenchmarkCollector(config);

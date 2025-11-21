@@ -66,6 +66,10 @@ export class ServerCommandHandler {
 
 		db.shapes.push(command.shape);
 
+		if (this._clientManager.isViewportFilteringEnabled()) {
+			return;
+		}
+
 		const client = this._clientManager.get(ws.data.clientId);
 		if (client) {
 			client.lastSeenVersion.set(command.shape.id, command.shape.version);
@@ -90,6 +94,10 @@ export class ServerCommandHandler {
 		ws: Bun.ServerWebSocket<WebSocketData>,
 		command: MoveWindowCommand,
 	): void {
+		if (!this._clientManager.isViewportFilteringEnabled()) {
+			return;
+		}
+
 		const client = this._clientManager.updateClientViewport(
 			ws.data.clientId,
 			command.location.x,
@@ -121,7 +129,7 @@ export class ServerCommandHandler {
 			serverSentAt: microtime.now(),
 		} as Event;
 
-		log.debug(
+		log.info(
 			`🔷 Sending ${shapesToSend.length} updated shapes to client ${ws.data.clientId}`,
 		);
 

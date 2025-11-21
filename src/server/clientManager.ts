@@ -33,6 +33,10 @@ export class ClientManager {
 		this._config = config;
 	}
 
+	public isViewportFilteringEnabled(): boolean {
+		return this._config.enableViewportFiltering;
+	}
+
 	public add(ws: Bun.ServerWebSocket<WebSocketData>): void {
 		const clientId = ws.data.clientId;
 		const isWeb = ws.data.isWeb || false;
@@ -119,7 +123,7 @@ export class ClientManager {
 		this.getClients().forEach((client) => {
 			if (client.ws === excludeWs) return;
 
-			if (this._config.enableViewportFiltering) {
+			if (this.isViewportFilteringEnabled()) {
 				const shapesInViewport = this.getShapesInViewport(
 					[shape],
 					client.viewport,
@@ -151,16 +155,16 @@ export class ClientManager {
 	}
 
 	public updateLastSeenVersions(shape: Shape): void {
+		if (!this.isViewportFilteringEnabled()) {
+			return;
+		}
+
 		this.getClients().forEach((client) => {
-			if (this._config.enableViewportFiltering) {
-				const shapesInViewport = this.getShapesInViewport(
-					[shape],
-					client.viewport,
-				);
-				if (shapesInViewport.length > 0) {
-					client.lastSeenVersion.set(String(shape.id), shape.version);
-				}
-			} else {
+			const shapesInViewport = this.getShapesInViewport(
+				[shape],
+				client.viewport,
+			);
+			if (shapesInViewport.length > 0) {
 				client.lastSeenVersion.set(String(shape.id), shape.version);
 			}
 		});

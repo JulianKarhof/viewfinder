@@ -1,9 +1,57 @@
 import { Settings } from "../env";
 import type { BenchmarkCollector } from "../runner/collector";
 import { ProcessRunner } from "../runner/runner";
-import { seededRandom } from "../utils/seededRandom";
+import { initializeRandom, seededRandom } from "../utils/seededRandom";
 
 const shapeCountMultiplier = Settings.isDebugMode ? 1 : 100;
+
+/**
+ * Warmup phase to stabilize performance before benchmarking.
+ * Runs basic operations without collecting metrics.
+ */
+export async function runWarmup(): Promise<void> {
+	for (
+		let warmupIteration = 0;
+		warmupIteration < (Settings.isDebugMode ? 1 : 20);
+		warmupIteration++
+	) {
+		const runner = new ProcessRunner();
+		runner.setServerConfig({ enableViewportFiltering: true });
+
+		initializeRandom(42);
+		process.env.RANDOM_SEED = "42";
+
+		try {
+			await runner.startServer();
+			await runner.waitForServerReady();
+
+			await runner.startClients(4);
+			await runner.waitForAllClientsReady();
+
+			await runner.client(1).moveWindow({ x: 100, y: 100 });
+			await runner.client(2).moveWindow({ x: 400, y: 100 });
+			await runner.client(3).moveWindow({ x: 100, y: 400 });
+			await runner.client(4).moveWindow({ x: 400, y: 400 });
+			await runner.wait();
+
+			for (let i = 0; i < 1000; i++) {
+				const clientId = (i % 4) + 1;
+				await runner.client(clientId).createShapeInViewport();
+			}
+
+			await runner.client(1).moveWindow({ x: 400, y: 100 });
+			await runner.client(2).moveWindow({ x: 100, y: 400 });
+			await runner.client(3).moveWindow({ x: 400, y: 400 });
+			await runner.client(4).moveWindow({ x: 100, y: 100 });
+			await runner.wait();
+
+			await runner.stopAll();
+		} catch (error) {
+			await runner.stopAll();
+			throw error;
+		}
+	}
+}
 
 /**
  * Complete Overlap

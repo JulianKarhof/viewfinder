@@ -143,8 +143,6 @@ export interface ThroughputMetrics extends BaseMetrics {
 	clientId: number;
 	bytesReceived: number;
 	bytesSent: number;
-	messageCount?: number;
-	avgMessageSize?: number;
 }
 
 export interface ServerMetrics extends BaseMetrics {

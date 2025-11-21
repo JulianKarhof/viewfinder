@@ -327,10 +327,20 @@ export class ProcessRunner {
 		};
 	}
 
-	public async stopAll() {
-		log.info("🛑 Stopping all processes...");
+	public async stopAll(type: "all" | "clients" | "server" = "all") {
+		log.info(`🛑 Stopping ${type === "all" ? "all processes" : type}...`);
 
-		const processes = this.getAllRunningProcesses();
+		let processes: ProcessInfo[] = [];
+
+		if (type === "all") {
+			processes = this.getAllRunningProcesses();
+		} else if (type === "clients") {
+			processes = this._clients;
+		} else if (type === "server") {
+			if (this._server) {
+				processes = [this._server];
+			}
+		}
 
 		for (const processInfo of processes) {
 			try {
@@ -352,7 +362,7 @@ export class ProcessRunner {
 			log.warn(
 				"🚨 Timeout waiting for processes to exit, force killing remaining processes",
 			);
-			this.getAllRunningProcesses().forEach((p) => {
+			processes.forEach((p) => {
 				try {
 					p.process.kill("SIGKILL");
 				} catch {}
@@ -365,11 +375,17 @@ export class ProcessRunner {
 
 		clearTimeout(timeout);
 
-		this._server = null;
-		this._clients = [];
-		this._visualizer = null;
+		if (type === "all") {
+			this._server = null;
+			this._clients = [];
+			this._visualizer = null;
+		} else if (type === "clients") {
+			this._clients = [];
+		} else if (type === "server") {
+			this._server = null;
+		}
 
-		log.info("✅ All processes stopped");
+		log.info(`✅ ${type === "all" ? "All processes" : type} stopped`);
 	}
 
 	public async waitForAllProcesses(timeout: number | null = null) {

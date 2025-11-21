@@ -49,7 +49,7 @@ export class ClientWrapper {
 	}
 
 	/**
-	 * Makes the client send an createShape command. If no shape is provided, the client will generate a random shape within its viewport coordinates.
+	 * Makes the client send a createShape command. If no shape is provided, the client will generate a random shape within its viewport coordinates.
 	 */
 	public async createShape(
 		shape: Shape,
@@ -61,6 +61,26 @@ export class ClientWrapper {
 			coordinateMode,
 			shape: shape,
 		});
+	}
+
+	/**
+	 * Creates a shape in the client's viewport and returns the shape ID for tracking.
+	 */
+	public async createShapeInViewport(): Promise<{
+		response: CommandResponse;
+		shapeId: string;
+	}> {
+		const response = await this._runner.sendCommand(this._clientName, {
+			type: "createShape",
+			coordinateMode: "local",
+		});
+
+		if (!response.shapeId)
+			throw new Error("No shapeId returned from createShape command");
+
+		const shapeId = response.shapeId;
+
+		return { response, shapeId };
 	}
 
 	/**
@@ -81,11 +101,32 @@ export class ClientWrapper {
 	/**
 	 * Makes the client send a deleteShape command.
 	 */
-	public async addRandomShapeInViewport(): Promise<CommandResponse> {
-		log.info(`Client ${this._clientId} adding random shape in viewport`);
+	public async deleteShape(shapeId: string): Promise<CommandResponse> {
 		return this._runner.sendCommand(this._clientName, {
-			type: "createShape",
-			coordinateMode: "local",
+			type: "deleteShape",
+			shapeId,
+		});
+	}
+
+	/**
+	 * Moves an existing shape to a new location.
+	 */
+	public async moveShape(
+		shapeId: string,
+		newX: number,
+		newY: number,
+	): Promise<CommandResponse> {
+		log.info(
+			`Client ${this._clientId} moving shape ${shapeId} to (${newX}, ${newY})`,
+		);
+		return this._runner.sendCommand(this._clientName, {
+			type: "updateShape",
+			shape: {
+				id: shapeId,
+				type: "circle",
+				x: newX,
+				y: newY,
+			},
 		});
 	}
 

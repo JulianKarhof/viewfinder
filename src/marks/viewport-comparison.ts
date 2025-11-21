@@ -31,13 +31,13 @@ export async function runViewportFilteringBenchmark(
 		for (let i = 0; i < 1000; i++) {
 			await runner.wait();
 
-			await runner.client(1).addRandomShapeInViewport();
+			await runner.client(1).createShapeInViewport();
 			await runner.wait();
-			await runner.client(2).addRandomShapeInViewport();
+			await runner.client(2).createShapeInViewport();
 			await runner.wait();
-			await runner.client(3).addRandomShapeInViewport();
+			await runner.client(3).createShapeInViewport();
 			await runner.wait();
-			await runner.client(4).addRandomShapeInViewport();
+			await runner.client(4).createShapeInViewport();
 		}
 
 		await runner.client(1).moveWindow({ x: 250, y: 250 });
@@ -48,13 +48,13 @@ export async function runViewportFilteringBenchmark(
 
 		for (let i = 0; i < 500; i++) {
 			await runner.wait();
-			await runner.client(1).addRandomShapeInViewport();
+			await runner.client(1).createShapeInViewport();
 			await runner.wait();
-			await runner.client(2).addRandomShapeInViewport();
+			await runner.client(2).createShapeInViewport();
 			await runner.wait();
-			await runner.client(3).addRandomShapeInViewport();
+			await runner.client(3).createShapeInViewport();
 			await runner.wait();
-			await runner.client(4).addRandomShapeInViewport();
+			await runner.client(4).createShapeInViewport();
 		}
 
 		for (let i = 0; i < 100; i++) {

@@ -24,9 +24,9 @@ export async function runDefaultBenchmark(
 
 		for (let i = 0; i < 5000; i++) {
 			await runner.wait();
-			await runner.client(1).addRandomShapeInViewport();
+			await runner.client(1).createShapeInViewport();
 			await runner.wait();
-			await runner.client(2).addRandomShapeInViewport();
+			await runner.client(2).createShapeInViewport();
 		}
 
 		await runner.client(1).moveWindow({ x: 200, y: 200 });

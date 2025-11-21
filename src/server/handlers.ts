@@ -36,13 +36,14 @@ export class ServerCommandHandler {
 				break;
 			case "moveWindow":
 				this._handleMoveWindow(ws, command);
-				return; // Skip broadcasting and shape updates
+				break;
 			default:
 				log.warn(`⚠️ Unknown command type: ${command}`);
 				return;
 		}
 
 		this._clientManager.broadcastToWebClients("reload", ws);
+		if (command.type === "moveWindow") return;
 		this._handleShapeUpdate(ws, command);
 	}
 

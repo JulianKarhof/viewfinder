@@ -59,7 +59,7 @@ export class ProcessRunner {
 	public async sendCommand(
 		processName: string,
 		command: Command,
-		timeoutMs: number = Settings.isDebugMode ? 60000 : 100,
+		timeoutMs: number = Settings.isDebugMode ? 60000 : 500,
 	): Promise<CommandResponse> {
 		const process = this._findProcess(processName);
 		const commandMessage: CommandMessage = {

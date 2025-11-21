@@ -72,6 +72,7 @@ export interface CommandResponse {
 	type: "response";
 	success: boolean;
 	error?: string;
+	shapeId?: string;
 }
 
 export type BaseEvent = {

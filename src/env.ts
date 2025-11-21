@@ -4,6 +4,8 @@ class SettingsSingleton {
 	public readonly isDebugMode: boolean;
 	public readonly waitTime: number;
 	public readonly logLevel: "debug" | "info" | "warn" | "error" = "info";
+	public readonly canvasWidth: number = 1200;
+	public readonly canvasHeight: number = 800;
 
 	private constructor() {
 		this.isDebugMode =

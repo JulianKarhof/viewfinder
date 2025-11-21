@@ -129,19 +129,25 @@ export class CommandHandler {
 	): CommandResponse {
 		if (!command.shape) {
 			command.shape = {
-				id: `shape-${Date.now}`,
+				id: `shape-${Date.now()}-${this._clientId}-${seededRandom().toString(36).substring(2, 9)}`,
 				version: 0,
 				type: "circle",
 				x:
-					this._clientState.location.x +
-					seededRandom() * this._clientState.location.width,
+					command.coordinateMode === "global"
+						? seededRandom() * Settings.canvasWidth
+						: this._clientState.location.x +
+							seededRandom() * this._clientState.location.width,
 				y:
-					this._clientState.location.y +
-					seededRandom() * this._clientState.location.height,
+					command.coordinateMode === "global"
+						? seededRandom() * Settings.canvasHeight
+						: this._clientState.location.y +
+							seededRandom() * this._clientState.location.height,
 				color: generateClientColor(this._clientId),
 				radius: 8,
 			};
 		}
+
+		response.shapeId = command.shape.id;
 		this._sendMessage(command);
 		process.send?.(response);
 		return response;

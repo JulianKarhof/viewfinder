@@ -159,12 +159,18 @@ export interface ServerMetrics extends BaseMetrics {
 export interface LatencyMetrics extends BaseMetrics {
 	dataType: "latency";
 	operation: string;
-	clientToServerUs: number;
-	serverToClientUs: number;
-	clientToClientUs: number;
+	count: number;
+	avgClientToClientUs: number;
+	minClientToClientUs: number;
+	maxClientToClientUs: number;
+	avgClientToServerUs: number;
+	minClientToServerUs: number;
+	maxClientToServerUs: number;
+	avgServerToClientUs: number;
+	minServerToClientUs: number;
+	maxServerToClientUs: number;
 	clientId?: number;
 	targetClientId?: number;
-	messageSize?: number;
 }
 
 export type MetricsData = ThroughputMetrics | ServerMetrics | LatencyMetrics;

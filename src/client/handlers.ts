@@ -207,13 +207,15 @@ export class CommandHandler {
 		this._clientState.location.x = x;
 		this._clientState.location.y = y;
 
-		this._sendMessage({
-			type: "moveWindow",
-			location: {
-				x,
-				y,
-			},
-		});
+		if (process.env.ENABLE_VIEWPORT_FILTERING === "true") {
+			this._sendMessage({
+				type: "moveWindow",
+				location: {
+					x,
+					y,
+				},
+			});
+		}
 
 		this._log.debug("📍 Moved window to", this._clientState.location);
 	}

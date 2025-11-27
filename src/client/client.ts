@@ -5,7 +5,6 @@ import type {
 	Command,
 	CommandMessage,
 	Event,
-	MetricsMessage,
 	Shape,
 	StartupReadyMessage,
 } from "../types.ts";
@@ -42,7 +41,7 @@ export function startClient(
 	const log = logger.client(id);
 	process.title = `viewfinder:client:${id}`;
 	const ws = new WebSocket(`${serverUrl}?clientId=${id}`);
-	const metricsCollector = new ClientMetricsCollector();
+	const metricsCollector = new ClientMetricsCollector(id);
 
 	const clientState: ClientState = {
 		location: {
@@ -79,6 +78,8 @@ export function startClient(
 	ws.onopen = () => {
 		log.info(`🔗 Connected to ${serverUrl}`);
 
+		metricsCollector.startPeriodicReporting();
+
 		process.send?.({
 			type: "ready",
 			processType: "client",
@@ -110,24 +111,6 @@ export function startClient(
 		}
 
 		metricsCollector.trackMessage(event, "in");
-
-		if (event.origin) {
-			process.send?.({
-				type: "metrics",
-				data: {
-					dataType: "latency",
-					clientId: event.origin,
-					targetClientId: id,
-					clientToClientUs: microtime.now() - (event.clientSentAt || 0),
-					clientToServerUs:
-						(event.serverReceivedAt || 0) - (event.clientSentAt || 0),
-					serverToClientUs: microtime.now() - (event.serverReceivedAt || 0),
-					operation: event.type,
-					processId: `client-${id}`,
-					timestamp: Date.now(),
-				},
-			} as MetricsMessage);
-		}
 
 		log.debug("💬 Websocket message received", update);
 		eventHandler.handleEvent(event);

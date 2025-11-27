@@ -29,7 +29,7 @@ export function startServer(
 	const server: Bun.Server = Bun.serve({
 		port,
 		websocket: {
-			message(ws: Bun.ServerWebSocket<WebSocketData>, message) {
+			async message(ws: Bun.ServerWebSocket<WebSocketData>, message) {
 				let command: Command;
 				try {
 					command = SuperJSON.parse(message.toString());
@@ -45,7 +45,7 @@ export function startServer(
 
 				log.debug("⬅️  Message from client", timestampedCommand);
 
-				commandHandler.handleCommand(ws, timestampedCommand);
+				await commandHandler.handleCommand(ws, timestampedCommand);
 			},
 			open(ws: Bun.ServerWebSocket<WebSocketData>) {
 				clientManager.add(ws);

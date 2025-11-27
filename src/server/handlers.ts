@@ -12,13 +12,25 @@ import type {
 	UpdateShapeCommand,
 } from "../types";
 import type { ClientManager, WebSocketData } from "./clientManager";
+import { Mutex } from "./mutex";
 
 const log = logger.server;
 
 export class ServerCommandHandler {
+	private _mutex = new Mutex();
+
 	public constructor(private _clientManager: ClientManager) {}
 
-	public handleCommand(
+	public async handleCommand(
+		ws: Bun.ServerWebSocket<WebSocketData>,
+		command: Command,
+	): Promise<void> {
+		await this._mutex.runExclusive(async () => {
+			this._handleCommandInternal(ws, command);
+		});
+	}
+
+	private _handleCommandInternal(
 		ws: Bun.ServerWebSocket<WebSocketData>,
 		command: Command,
 	): void {
@@ -65,10 +77,6 @@ export class ServerCommandHandler {
 		if (!command.shape) return;
 
 		db.shapes.push(command.shape);
-
-		if (this._clientManager.isViewportFilteringEnabled()) {
-			return;
-		}
 
 		const client = this._clientManager.get(ws.data.clientId);
 		if (client) {

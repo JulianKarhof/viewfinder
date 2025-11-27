@@ -1,11 +1,10 @@
+import { Settings } from "./env";
 import { logger } from "./logger";
-import {
-	runScenario,
-	runWarmup,
-	type ScenarioKey,
-	scenarios,
-} from "./marks/scenarios";
-import { BenchmarkCollector, type BenchmarkConfig } from "./runner/collector";
+import { runScenario, type ScenarioKey, scenarios } from "./marks/scenarios";
+import { BenchmarkCollector } from "./runner/collector";
+import { compareResults } from "./runner/stats";
+import type { BenchmarkConfig } from "./runner/types";
+import { initializeRandom } from "./utils/seededRandom";
 
 const log = logger.misc;
 
@@ -15,7 +14,7 @@ async function main() {
 	};
 
 	const args = process.argv.slice(2);
-	let iterations = 30;
+	let iterations = 50;
 	let scenarioName = "average";
 
 	const iterationsArg = args.find(
@@ -61,17 +60,24 @@ async function runScenarioBenchmark(
 	console.log(`🔬 Starting ${displayName} Scenario Benchmark`);
 	console.log("=".repeat(50));
 
-	console.log("\n🔥 Warming up...");
-	await runWarmup();
-	console.log("✅ Warmup complete\n");
+	const seed = 42;
+	initializeRandom(seed);
+	process.env.RANDOM_SEED = String(seed);
 
-	await new Promise((resolve) => setTimeout(resolve, 1000));
+	console.log("\n🔥 Warming up...");
+	const warmupIterations = Settings.isDebugMode ? 2 : 30;
+	for (let i = 0; i < warmupIterations; i++) {
+		await runScenario(scenarioName as ScenarioKey, null, true);
+	}
+	console.log("✅ Warmup complete\n");
 
 	log.info("✅ Running with viewport filtering ENABLED");
 	const collectorWithFiltering = new BenchmarkCollector(config);
 
 	for (let i = 1; i <= iterations; i++) {
 		log.info(`🏃 Starting iteration ${i}/${iterations} (viewport enabled)`);
+
+		Bun.gc(true);
 
 		collectorWithFiltering.startRun(i);
 		try {
@@ -83,7 +89,7 @@ async function runScenarioBenchmark(
 			log.info(`✅ Iteration ${i}/${iterations} completed (viewport enabled)`);
 		} catch (error) {
 			log.error(
-				`🚨 Iteration ${i}/${iterations} failed (viewport enabled):`,
+				`🚨 Iteration ${i}/${iterations} failed (filtering enabled):`,
 				error,
 			);
 		} finally {
@@ -95,8 +101,7 @@ async function runScenarioBenchmark(
 		}
 	}
 
-	const filenameWithFiltering = `results/${scenarioName}-enabled-${timestamp}.json`;
-	await collectorWithFiltering.saveResults(filenameWithFiltering);
+	collectorWithFiltering.completeSuite();
 
 	log.info("❄️  Cooling down between benchmark variants...");
 	await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -105,7 +110,9 @@ async function runScenarioBenchmark(
 	const collectorWithoutFiltering = new BenchmarkCollector(config);
 
 	for (let i = 1; i <= iterations; i++) {
-		log.info(`🏃 Starting iteration ${i}/${iterations} (viewport disabled)`);
+		log.info(`🏃 Starting iteration ${i}/${iterations} (filtering disabled)`);
+
+		Bun.gc(true);
 
 		collectorWithoutFiltering.startRun(i);
 		try {
@@ -129,17 +136,32 @@ async function runScenarioBenchmark(
 		}
 	}
 
-	const filenameWithoutFiltering = `results/${scenarioName}-disabled-${timestamp}.json`;
-	await collectorWithoutFiltering.saveResults(filenameWithoutFiltering);
-
 	console.log(`\n📊 ${displayName.toUpperCase()} SCENARIO RESULTS`);
 	console.log("=".repeat(50));
+
+	collectorWithoutFiltering.completeSuite();
 
 	console.log("\n🟢 WITH Viewport Filtering:");
 	collectorWithFiltering.printSummary();
 
 	console.log("\n🔴 WITHOUT Viewport Filtering:");
 	collectorWithoutFiltering.printSummary();
+
+	const comparison = compareResults(
+		collectorWithFiltering.getPerRunStats(),
+		collectorWithoutFiltering.getPerRunStats(),
+		"WITH Filtering",
+		"WITHOUT Filtering",
+	);
+
+	const filenameWithFiltering = `results/${scenarioName}-enabled-${timestamp}.json`;
+	const filenameWithoutFiltering = `results/${scenarioName}-disabled-${timestamp}.json`;
+
+	await collectorWithFiltering.saveResults(filenameWithFiltering, comparison);
+	await collectorWithoutFiltering.saveResults(
+		filenameWithoutFiltering,
+		comparison,
+	);
 }
 
 main();

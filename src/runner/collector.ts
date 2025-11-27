@@ -6,87 +6,18 @@ import type {
 	ServerMetrics,
 	ThroughputMetrics,
 } from "../types";
-import { initializeRandom } from "../utils/seededRandom";
-
-export interface BenchmarkConfig {
-	clientCount: number;
-}
-
-export interface BenchmarkRun {
-	runId: string;
-	runIndex: number;
-	startTime: string;
-	endTime?: string;
-	duration?: number;
-	config: BenchmarkConfig;
-}
-
-export interface BenchmarkSuite {
-	suiteId: string;
-	totalRuns: number;
-	startTime: string;
-	endTime?: string;
-	config: BenchmarkConfig;
-	runs: BenchmarkRun[];
-}
-
-export type RunMetricsData = MetricsData & {
-	runId: string;
-	runIndex: number;
-};
-
-export interface MetricsSummary {
-	count: number;
-	avg: number;
-	min: number;
-	max: number;
-	p50: number;
-	p95: number;
-	p99: number;
-	stdDev: number;
-	coefficientOfVariation: number;
-	confidenceInterval95: [number, number];
-}
-
-export interface ThroughputSummary {
-	avgBytesReceivedPerSecond: number;
-	avgBytesSentPerSecond: number;
-	bytesReceivedPerSecondStats: MetricsSummary;
-	bytesSentPerSecondStats: MetricsSummary;
-	totalBytesReceived: number;
-	totalBytesSent: number;
-	byClient: Record<
-		number,
-		{
-			bytesReceived: MetricsSummary;
-			bytesSent: MetricsSummary;
-		}
-	>;
-}
-
-export interface ServerMetricsSummary {
-	cpu: MetricsSummary;
-	memory: MetricsSummary;
-	heapUsed: MetricsSummary;
-	activeConnections: MetricsSummary;
-}
-
-export interface LatencySummary {
-	byOperation: Record<string, MetricsSummary>;
-	overall: MetricsSummary;
-}
-
-export interface BenchmarkSummary {
-	throughput: ThroughputSummary;
-	serverMetrics: ServerMetricsSummary;
-	latency: LatencySummary;
-}
-
-export interface BenchmarkResults {
-	metadata: BenchmarkSuite;
-	rawData: RunMetricsData[];
-	summary: BenchmarkSummary;
-}
+import type {
+	BenchmarkConfig,
+	BenchmarkRun,
+	BenchmarkSuite,
+	BenchmarkSummary,
+	LatencyByRun,
+	MetricsSummary,
+	PerRunStats,
+	RunMetricsData,
+	ScenarioEvent,
+	StatisticalComparison,
+} from "./types";
 
 export class BenchmarkCollector {
 	private _suiteId: string;
@@ -95,6 +26,7 @@ export class BenchmarkCollector {
 	private _currentRun: BenchmarkRun | null = null;
 	private _allRunsData: RunMetricsData[] = [];
 	private _currentRunData: RunMetricsData[] = [];
+	private _currentRunEvents: ScenarioEvent[] = [];
 
 	public constructor(config: BenchmarkConfig) {
 		this._suiteId = `benchmark-${Date.now()}`;
@@ -117,6 +49,7 @@ export class BenchmarkCollector {
 			...data,
 			runId: this._currentRun.runId,
 			runIndex: this._currentRun.runIndex,
+			relativeTimestamp: data.timestamp - this._currentRun.startTimeMs,
 		};
 
 		this._currentRunData.push(runMetrics);
@@ -130,21 +63,32 @@ export class BenchmarkCollector {
 		}
 
 		const runId = `${this._suiteId}-run-${runIndex}`;
+		const startTimeMs = Date.now();
 		this._currentRun = {
 			runId,
 			runIndex,
-			startTime: new Date().toISOString(),
+			startTime: new Date(startTimeMs).toISOString(),
+			startTimeMs,
 			config: this._config,
 		};
 
-		const seed = 42;
-		initializeRandom(seed);
-		process.env.RANDOM_SEED = String(seed);
-
 		this._currentRunData = [];
-		console.log(
-			`📊 Started benchmark run ${runIndex} (${runId}) with seed ${seed}`,
-		);
+		this._currentRunEvents = [];
+		console.log(`📊 Started benchmark run ${runIndex} (${runId})`);
+	}
+
+	public logEvent(event: string, details?: Record<string, unknown>): void {
+		if (!this._currentRun) {
+			return;
+		}
+
+		const now = Date.now();
+		this._currentRunEvents.push({
+			timestamp: now - this._currentRun.startTimeMs,
+			timestampMs: now,
+			event,
+			details,
+		});
 	}
 
 	public endRun(): void {
@@ -152,14 +96,17 @@ export class BenchmarkCollector {
 			throw new Error("No active benchmark run to end.");
 		}
 
-		const endTime = new Date().toISOString();
-		const startTime = new Date(this._currentRun.startTime).getTime();
-		const duration = Date.now() - startTime;
+		const endTimeMs = Date.now();
+		const endTime = new Date(endTimeMs).toISOString();
+		const duration = endTimeMs - this._currentRun.startTimeMs;
 
 		this._currentRun.endTime = endTime;
+		this._currentRun.endTimeMs = endTimeMs;
 		this._currentRun.duration = duration;
 
 		this._allRunsData.push(...this._currentRunData);
+
+		this._currentRun.events = this._currentRunEvents;
 		this._suite.runs.push({ ...this._currentRun });
 
 		console.log(
@@ -167,6 +114,7 @@ export class BenchmarkCollector {
 		);
 		this._currentRun = null;
 		this._currentRunData = [];
+		this._currentRunEvents = [];
 	}
 
 	public completeSuite(): void {
@@ -250,8 +198,8 @@ export class BenchmarkCollector {
 
 	private _generateSummary(): BenchmarkSummary {
 		const throughputData = this._getThroughputMetrics();
-		const serverData = this._getServerMetrics();
 		const latencyData = this._getLatencyMetrics();
+		const perRunStats = this._generatePerRunStats();
 
 		const totalBytesReceived = throughputData.reduce(
 			(sum, d) => sum + d.bytesReceived,
@@ -284,22 +232,43 @@ export class BenchmarkCollector {
 			};
 		}
 
-		const latencyByRun: Record<
-			string,
-			{ latencies: number[]; byOperation: Record<string, number[]> }
-		> = {};
+		const latencyByRun: LatencyByRun = {};
 
 		for (const data of latencyData) {
 			if (!latencyByRun[data.runId]) {
-				latencyByRun[data.runId] = { latencies: [], byOperation: {} };
+				latencyByRun[data.runId] = {
+					latencies: [],
+					mins: [],
+					maxs: [],
+					byOperation: {},
+				};
 			}
-			const latencyMs = data.clientToClientUs / 1000;
-			latencyByRun[data.runId].latencies.push(latencyMs);
+
+			const avgLatencyMs = data.avgClientToClientUs / 1000;
+			const minLatencyMs = data.minClientToClientUs / 1000;
+			const maxLatencyMs = data.maxClientToClientUs / 1000;
+
+			latencyByRun[data.runId].latencies.push(avgLatencyMs);
+			latencyByRun[data.runId].mins.push(minLatencyMs);
+			latencyByRun[data.runId].maxs.push(maxLatencyMs);
 
 			if (!latencyByRun[data.runId].byOperation[data.operation]) {
-				latencyByRun[data.runId].byOperation[data.operation] = [];
+				latencyByRun[data.runId].byOperation[data.operation] = {
+					latencies: [],
+					mins: [],
+					maxs: [],
+				};
 			}
-			latencyByRun[data.runId].byOperation[data.operation].push(latencyMs);
+
+			latencyByRun[data.runId].byOperation[data.operation].latencies.push(
+				avgLatencyMs,
+			);
+			latencyByRun[data.runId].byOperation[data.operation].mins.push(
+				minLatencyMs,
+			);
+			latencyByRun[data.runId].byOperation[data.operation].maxs.push(
+				maxLatencyMs,
+			);
 		}
 
 		const avgLatencyPerRun = Object.values(latencyByRun).map((run) => {
@@ -315,17 +284,29 @@ export class BenchmarkCollector {
 			const avgLatencyPerRunForOperation = Object.values(latencyByRun)
 				.filter(
 					(run) =>
-						run.byOperation[operation] && run.byOperation[operation].length > 0,
+						run.byOperation[operation] &&
+						run.byOperation[operation].latencies.length > 0,
 				)
 				.map((run) => {
-					const opLatencies = run.byOperation[operation];
+					const opLatencies = run.byOperation[operation].latencies;
 					return (
 						opLatencies.reduce((sum, lat) => sum + lat, 0) / opLatencies.length
 					);
 				});
+
 			byOperation[operation] = this._calculateSummary(
 				avgLatencyPerRunForOperation,
 			);
+
+			const opMins = Object.values(latencyByRun).flatMap(
+				(run) => run.byOperation[operation]?.mins || [],
+			);
+			const opMaxs = Object.values(latencyByRun).flatMap(
+				(run) => run.byOperation[operation]?.maxs || [],
+			);
+
+			byOperation[operation].min = Math.min(...opMins);
+			byOperation[operation].max = Math.max(...opMaxs);
 		}
 
 		const throughputByRun: Record<string, { received: number; sent: number }> =
@@ -346,33 +327,134 @@ export class BenchmarkCollector {
 			(run) => run.sent,
 		);
 
+		const avgCpuPerRun = perRunStats.map((run) => run.server.avgCpu);
+		const maxCpuPerRun = perRunStats.map((run) => run.server.maxCpu);
+		const avgMemoryPerRun = perRunStats.map((run) => run.server.avgMemory);
+		const maxMemoryPerRun = perRunStats.map((run) => run.server.maxMemory);
+
 		return {
 			throughput: {
 				avgBytesReceivedPerSecond: totalBytesReceived / totalDurationSeconds,
 				avgBytesSentPerSecond: totalBytesSent / totalDurationSeconds,
 				totalBytesReceived,
 				totalBytesSent,
-				bytesReceivedPerSecondStats:
-					this._calculateSummary(bytesReceivedPerRun),
-				bytesSentPerSecondStats: this._calculateSummary(bytesSentPerRun),
+				bytesReceivedPerSecond: this._calculateSummary(bytesReceivedPerRun),
+				bytesSentPerSecond: this._calculateSummary(bytesSentPerRun),
 				byClient,
 			},
 			serverMetrics: {
-				cpu: this._calculateSummary(serverData.map((d) => d.cpuPercent)),
-				memory: this._calculateSummary(serverData.map((d) => d.memoryMB)),
-				heapUsed: this._calculateSummary(serverData.map((d) => d.heapUsedMB)),
-				activeConnections: this._calculateSummary(
-					serverData.map((d) => d.activeConnections),
-				),
+				cpu: this._calculateSummary(avgCpuPerRun),
+				cpuMax: this._calculateSummary(maxCpuPerRun),
+				memory: this._calculateSummary(avgMemoryPerRun),
+				memoryMax: this._calculateSummary(maxMemoryPerRun),
 			},
 			latency: {
 				byOperation,
-				overall: this._calculateSummary(avgLatencyPerRun),
+				overall: (() => {
+					const overallSummary = this._calculateSummary(avgLatencyPerRun);
+					const allMins = Object.values(latencyByRun).flatMap(
+						(run) => run.mins,
+					);
+					const allMaxs = Object.values(latencyByRun).flatMap(
+						(run) => run.maxs,
+					);
+					overallSummary.min = Math.min(...allMins);
+					overallSummary.max = Math.max(...allMaxs);
+					return overallSummary;
+				})(),
 			},
 		};
 	}
 
-	public async saveResults(basePath: string): Promise<void> {
+	private _generatePerRunStats(): PerRunStats[] {
+		const throughputData = this._getThroughputMetrics();
+		const latencyData = this._getLatencyMetrics();
+		const serverData = this._getServerMetrics();
+
+		return this._suite.runs.map((run) => {
+			const runThroughput = throughputData.filter((d) => d.runId === run.runId);
+			const runLatency = latencyData.filter((d) => d.runId === run.runId);
+			const runServer = serverData.filter((d) => d.runId === run.runId);
+
+			const bytesReceived = runThroughput.reduce(
+				(sum, d) => sum + d.bytesReceived,
+				0,
+			);
+			const bytesSent = runThroughput.reduce((sum, d) => sum + d.bytesSent, 0);
+
+			const latencies = runLatency.map((d) => d.avgClientToClientUs / 1000);
+			const latencyStats = this._calculateSummary(latencies);
+			const allMins = runLatency.map((d) => d.minClientToClientUs / 1000);
+			const allMaxs = runLatency.map((d) => d.maxClientToClientUs / 1000);
+
+			latencyStats.min = Math.min(...allMins);
+			latencyStats.max = Math.max(...allMaxs);
+
+			const byOperation: Record<
+				string,
+				{ avg: number; p95: number; p99: number }
+			> = {};
+			const operations = [...new Set(runLatency.map((d) => d.operation))];
+
+			for (const operation of operations) {
+				const opLatencies = runLatency
+					.filter((d) => d.operation === operation)
+					.map((d) => d.avgClientToClientUs / 1000);
+				const opStats = this._calculateSummary(opLatencies);
+				const opMins = runLatency
+					.filter((d) => d.operation === operation)
+					.map((d) => d.minClientToClientUs / 1000);
+				const opMaxs = runLatency
+					.filter((d) => d.operation === operation)
+					.map((d) => d.maxClientToClientUs / 1000);
+				opStats.min = Math.min(...opMins);
+				opStats.max = Math.max(...opMaxs);
+				byOperation[operation] = {
+					avg: opStats.avg,
+					p95: opStats.p95,
+					p99: opStats.p99,
+				};
+			}
+
+			const cpuStats = this._calculateSummary(
+				runServer.map((d) => d.cpuPercent),
+			);
+			const memStats = this._calculateSummary(runServer.map((d) => d.memoryMB));
+
+			const matchedRun = this._suite.runs.find((r) => r.runId === run.runId);
+			const runEvents = matchedRun?.events || [];
+
+			return {
+				runIndex: run.runIndex,
+				runId: run.runId,
+				startTimeMs: run.startTimeMs,
+				endTimeMs: run.endTimeMs || run.startTimeMs,
+				duration: run.duration || 0,
+				events: runEvents,
+				throughput: {
+					bytesReceived,
+					bytesSent,
+				},
+				latency: {
+					avg: latencyStats.avg,
+					p95: latencyStats.p95,
+					p99: latencyStats.p99,
+					byOperation,
+				},
+				server: {
+					avgCpu: cpuStats.avg,
+					maxCpu: cpuStats.max,
+					avgMemory: memStats.avg,
+					maxMemory: memStats.max,
+				},
+			};
+		});
+	}
+
+	public async saveResults(
+		basePath: string,
+		comparison?: StatisticalComparison,
+	): Promise<void> {
 		if (this._currentRun) {
 			throw new Error(
 				"Cannot save results while a run is active. Call endRun() first.",
@@ -398,22 +480,27 @@ export class BenchmarkCollector {
 		const latencyData = this._getLatencyMetrics();
 		const serverData = this._getServerMetrics();
 		const summary = this._generateSummary();
+		const perRunStats = this._generatePerRunStats();
 
 		const summaryData = {
 			metadata: this._suite,
 			summary: summary,
+			perRunStats,
+			comparison,
 		};
 
 		const throughputPath = `${baseNameWithoutExt}-throughput${extension}`;
 		const latencyPath = `${baseNameWithoutExt}-latency${extension}`;
 		const serverPath = `${baseNameWithoutExt}-server${extension}`;
 		const summaryPath = `${baseNameWithoutExt}-summary${extension}`;
+		const perRunPath = `${baseNameWithoutExt}-per-run${extension}`;
 
 		await Promise.all([
 			writeFile(throughputPath, SuperJSON.stringify(throughputData)),
 			writeFile(latencyPath, SuperJSON.stringify(latencyData)),
 			writeFile(serverPath, SuperJSON.stringify(serverData)),
 			writeFile(summaryPath, SuperJSON.stringify(summaryData)),
+			writeFile(perRunPath, SuperJSON.stringify(perRunStats)),
 		]);
 
 		console.log(`💾 Saved benchmark results.`);
@@ -421,48 +508,75 @@ export class BenchmarkCollector {
 
 	public printSummary(): void {
 		const summary = this._generateSummary();
+		const durationMs =
+			new Date(this._suite.endTime ?? 0).getTime() -
+			new Date(this._suite.startTime).getTime();
+
+		const avgReceivedKBps = (
+			summary.throughput.avgBytesReceivedPerSecond / 1024
+		).toFixed(2);
+		const totalReceivedKB = (
+			summary.throughput.totalBytesReceived / 1024
+		).toFixed(2);
+		const receivedCV =
+			summary.throughput.bytesReceivedPerSecond.coefficientOfVariation.toFixed(
+				1,
+			);
+		const receivedCI =
+			summary.throughput.bytesReceivedPerSecond.confidenceInterval95
+				.map((v) => (v / 1024).toFixed(2))
+				.join(", ");
+		const avgSentKBps = (
+			summary.throughput.avgBytesSentPerSecond / 1024
+		).toFixed(2);
+		const totalSentKB = (summary.throughput.totalBytesSent / 1024).toFixed(2);
+		const sentCV =
+			summary.throughput.bytesSentPerSecond.coefficientOfVariation.toFixed(1);
+		const sentCI = summary.throughput.bytesSentPerSecond.confidenceInterval95
+			.map((v) => (v / 1024).toFixed(2))
+			.join(", ");
+
+		const cpuAvg = summary.serverMetrics.cpu.avg.toFixed(3);
+		const cpuStdDev = summary.serverMetrics.cpu.stdDev.toFixed(3);
+		const cpuMaxAvg = summary.serverMetrics.cpuMax.avg.toFixed(3);
+		const cpuMaxStdDev = summary.serverMetrics.cpuMax.stdDev.toFixed(3);
+		const cpuCV = summary.serverMetrics.cpu.coefficientOfVariation.toFixed(1);
+		const cpuCI = summary.serverMetrics.cpu.confidenceInterval95
+			.map((v) => v.toFixed(2))
+			.join(", ");
+		const memAvg = summary.serverMetrics.memory.avg.toFixed(1);
+		const memStdDev = summary.serverMetrics.memory.stdDev.toFixed(1);
+		const memMaxAvg = summary.serverMetrics.memoryMax.avg.toFixed(1);
+		const memMaxStdDev = summary.serverMetrics.memoryMax.stdDev.toFixed(1);
+		const memCV =
+			summary.serverMetrics.memory.coefficientOfVariation.toFixed(1);
+		const memCI = summary.serverMetrics.memory.confidenceInterval95
+			.map((v) => v.toFixed(1))
+			.join(", ");
 
 		console.log("\n📊 BENCHMARK SUMMARY");
 		console.log("=".repeat(50));
 		console.log(`Suite ID: ${this._suiteId}`);
 		console.log(`Total Runs: ${this._suite.totalRuns}`);
-		console.log(
-			`Duration: ${new Date(this._suite.endTime ?? 0).getTime() - new Date(this._suite.startTime).getTime()}ms`,
-		);
+		console.log(`Duration: ${durationMs}ms`);
 
 		console.log("\n📡 THROUGHPUT:");
+		console.log(`  Avg Received: ${avgReceivedKBps} KB/s`);
+		console.log(`  Total Received: ${totalReceivedKB} KB`);
 		console.log(
-			`  Avg Received: ${(summary.throughput.avgBytesReceivedPerSecond / 1024).toFixed(2)} KB/s`,
+			`  Received Variability: CV=${receivedCV}% CI95=[${receivedCI}] KB/run`,
 		);
-		console.log(
-			`  Total Received: ${(summary.throughput.totalBytesReceived / 1024).toFixed(2)} KB`,
-		);
-		console.log(
-			`  Received Variability: CV=${summary.throughput.bytesReceivedPerSecondStats.coefficientOfVariation.toFixed(1)}% CI95=[${(summary.throughput.bytesReceivedPerSecondStats.confidenceInterval95[0] / 1024).toFixed(2)}, ${(summary.throughput.bytesReceivedPerSecondStats.confidenceInterval95[1] / 1024).toFixed(2)}] KB/run`,
-		);
-		console.log(
-			`  Avg Sent: ${(summary.throughput.avgBytesSentPerSecond / 1024).toFixed(2)} KB/s`,
-		);
-		console.log(
-			`  Total Sent: ${(summary.throughput.totalBytesSent / 1024).toFixed(2)} KB`,
-		);
-		console.log(
-			`  Sent Variability: CV=${summary.throughput.bytesSentPerSecondStats.coefficientOfVariation.toFixed(1)}% CI95=[${(summary.throughput.bytesSentPerSecondStats.confidenceInterval95[0] / 1024).toFixed(2)}, ${(summary.throughput.bytesSentPerSecondStats.confidenceInterval95[1] / 1024).toFixed(2)}] KB/run`,
-		);
+		console.log(`  Avg Sent: ${avgSentKBps} KB/s`);
+		console.log(`  Total Sent: ${totalSentKB} KB`);
+		console.log(`  Sent Variability: CV=${sentCV}% CI95=[${sentCI}] KB/run`);
 
 		console.log("\n🖥️  SERVER:");
-		console.log(
-			`  CPU: ${summary.serverMetrics.cpu.avg.toFixed(3)}% (max: ${summary.serverMetrics.cpu.max.toFixed(3)}%)`,
-		);
-		console.log(
-			`  CPU Variability: CV=${summary.serverMetrics.cpu.coefficientOfVariation.toFixed(1)}% CI95=[${summary.serverMetrics.cpu.confidenceInterval95[0].toFixed(2)}, ${summary.serverMetrics.cpu.confidenceInterval95[1].toFixed(2)}]%`,
-		);
-		console.log(
-			`  Memory: ${summary.serverMetrics.memory.avg.toFixed(1)} MB (max: ${summary.serverMetrics.memory.max.toFixed(1)} MB)`,
-		);
-		console.log(
-			`  Memory Variability: CV=${summary.serverMetrics.memory.coefficientOfVariation.toFixed(1)}% CI95=[${summary.serverMetrics.memory.confidenceInterval95[0].toFixed(1)}, ${summary.serverMetrics.memory.confidenceInterval95[1].toFixed(1)}] MB`,
-		);
+		console.log(`  CPU (avg): ${cpuAvg}% (±${cpuStdDev}%)`);
+		console.log(`  CPU (max): ${cpuMaxAvg}% (±${cpuMaxStdDev}%)`);
+		console.log(`  CPU Variability: CV=${cpuCV}% CI95=[${cpuCI}]%`);
+		console.log(`  Memory (avg): ${memAvg} MB (±${memStdDev} MB)`);
+		console.log(`  Memory (max): ${memMaxAvg} MB (±${memMaxStdDev} MB)`);
+		console.log(`  Memory Variability: CV=${memCV}% CI95=[${memCI}] MB`);
 
 		console.log("\n📶 LATENCY:");
 		const overallAvg = summary.latency.overall.avg;
@@ -478,13 +592,15 @@ export class BenchmarkCollector {
 			`  Variability: CV=${overallCV.toFixed(1)}% CI95=[${overallCI[0].toFixed(2)}, ${overallCI[1].toFixed(2)}]ms`,
 		);
 
-		for (const [operation, stats] of Object.entries(
-			summary.latency.byOperation,
-		)) {
-			console.log(
-				`  ${operation}: ${stats.avg.toFixed(2)}ms (p95: ${stats.p95.toFixed(2)}ms, CV: ${stats.coefficientOfVariation.toFixed(1)}%)`,
-			);
-		}
+		console.log("  By Operation:");
+		console.table(
+			Object.entries(summary.latency.byOperation).map(([operation, stats]) => ({
+				Operation: operation,
+				"Avg (ms)": stats.avg.toFixed(2),
+				"P95 (ms)": stats.p95.toFixed(2),
+				"CV (%)": stats.coefficientOfVariation.toFixed(1),
+			})),
+		);
 		console.log("=".repeat(50));
 	}
 
@@ -498,5 +614,9 @@ export class BenchmarkCollector {
 
 	public get totalMetricsCollected(): number {
 		return this._allRunsData.length;
+	}
+
+	public getPerRunStats(): PerRunStats[] {
+		return this._generatePerRunStats();
 	}
 }

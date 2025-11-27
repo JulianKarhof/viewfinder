@@ -1,5 +1,17 @@
 import type { MetricsData } from "../types";
 
+export interface LatencyByRun {
+	[runId: string]: {
+		latencies: number[];
+		mins: number[];
+		maxs: number[];
+		byOperation: Record<
+			string,
+			{ latencies: number[]; mins: number[]; maxs: number[] }
+		>;
+	};
+}
+
 export interface BenchmarkConfig {
 	clientCount: number;
 }
@@ -47,8 +59,8 @@ export interface MetricsSummary {
 export interface ThroughputSummary {
 	avgBytesReceivedPerSecond: number;
 	avgBytesSentPerSecond: number;
-	bytesReceivedPerSecondStats: MetricsSummary;
-	bytesSentPerSecondStats: MetricsSummary;
+	bytesReceivedPerSecond: MetricsSummary;
+	bytesSentPerSecond: MetricsSummary;
 	totalBytesReceived: number;
 	totalBytesSent: number;
 	byClient: Record<

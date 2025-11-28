@@ -97,7 +97,7 @@ async function runScenarioBenchmark(
 		}
 
 		if (i < iterations) {
-			await new Promise((resolve) => setTimeout(resolve, 500));
+			await new Promise((resolve) => setTimeout(resolve, 50));
 		}
 	}
 
@@ -132,7 +132,7 @@ async function runScenarioBenchmark(
 		}
 
 		if (i < iterations) {
-			await new Promise((resolve) => setTimeout(resolve, 500));
+			await new Promise((resolve) => setTimeout(resolve, 50));
 		}
 	}
 

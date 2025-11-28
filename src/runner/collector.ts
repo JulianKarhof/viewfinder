@@ -338,6 +338,12 @@ export class BenchmarkCollector {
 				avgBytesSentPerSecond: totalBytesSent / totalDurationSeconds,
 				totalBytesReceived,
 				totalBytesSent,
+				avgBytesReceivedPerRun:
+					bytesReceivedPerRun.reduce((sum, v) => sum + v, 0) /
+					bytesReceivedPerRun.length,
+				avgBytesSentPerRun:
+					bytesSentPerRun.reduce((sum, v) => sum + v, 0) /
+					bytesSentPerRun.length,
 				bytesReceivedPerSecond: this._calculateSummary(bytesReceivedPerRun),
 				bytesSentPerSecond: this._calculateSummary(bytesSentPerRun),
 				byClient,
@@ -358,8 +364,14 @@ export class BenchmarkCollector {
 					const allMaxs = Object.values(latencyByRun).flatMap(
 						(run) => run.maxs,
 					);
-					overallSummary.min = Math.min(...allMins);
-					overallSummary.max = Math.max(...allMaxs);
+					overallSummary.min = allMins.reduce(
+						(a, b) => Math.min(a, b),
+						Infinity,
+					);
+					overallSummary.max = allMaxs.reduce(
+						(a, b) => Math.max(a, b),
+						-Infinity,
+					);
 					return overallSummary;
 				})(),
 			},
@@ -387,8 +399,8 @@ export class BenchmarkCollector {
 			const allMins = runLatency.map((d) => d.minClientToClientUs / 1000);
 			const allMaxs = runLatency.map((d) => d.maxClientToClientUs / 1000);
 
-			latencyStats.min = Math.min(...allMins);
-			latencyStats.max = Math.max(...allMaxs);
+			latencyStats.min = allMins.reduce((a, b) => Math.min(a, b), Infinity);
+			latencyStats.max = allMaxs.reduce((a, b) => Math.max(a, b), -Infinity);
 
 			const byOperation: Record<
 				string,
@@ -407,8 +419,8 @@ export class BenchmarkCollector {
 				const opMaxs = runLatency
 					.filter((d) => d.operation === operation)
 					.map((d) => d.maxClientToClientUs / 1000);
-				opStats.min = Math.min(...opMins);
-				opStats.max = Math.max(...opMaxs);
+				opStats.min = opMins.reduce((a, b) => Math.min(a, b), Infinity);
+				opStats.max = opMaxs.reduce((a, b) => Math.max(a, b), -Infinity);
 				byOperation[operation] = {
 					avg: opStats.avg,
 					p95: opStats.p95,
@@ -516,7 +528,7 @@ export class BenchmarkCollector {
 			summary.throughput.avgBytesReceivedPerSecond / 1024
 		).toFixed(2);
 		const totalReceivedKB = (
-			summary.throughput.totalBytesReceived / 1024
+			summary.throughput.avgBytesReceivedPerRun / 1024
 		).toFixed(2);
 		const receivedCV =
 			summary.throughput.bytesReceivedPerSecond.coefficientOfVariation.toFixed(
@@ -529,7 +541,9 @@ export class BenchmarkCollector {
 		const avgSentKBps = (
 			summary.throughput.avgBytesSentPerSecond / 1024
 		).toFixed(2);
-		const totalSentKB = (summary.throughput.totalBytesSent / 1024).toFixed(2);
+		const totalSentKB = (summary.throughput.avgBytesSentPerRun / 1024).toFixed(
+			2,
+		);
 		const sentCV =
 			summary.throughput.bytesSentPerSecond.coefficientOfVariation.toFixed(1);
 		const sentCI = summary.throughput.bytesSentPerSecond.confidenceInterval95
@@ -562,12 +576,12 @@ export class BenchmarkCollector {
 
 		console.log("\n📡 THROUGHPUT:");
 		console.log(`  Avg Received: ${avgReceivedKBps} KB/s`);
-		console.log(`  Total Received: ${totalReceivedKB} KB`);
+		console.log(`  Avg Received Per Run: ${totalReceivedKB} KB`);
 		console.log(
 			`  Received Variability: CV=${receivedCV}% CI95=[${receivedCI}] KB/run`,
 		);
 		console.log(`  Avg Sent: ${avgSentKBps} KB/s`);
-		console.log(`  Total Sent: ${totalSentKB} KB`);
+		console.log(`  Avg Sent Per Run: ${totalSentKB} KB`);
 		console.log(`  Sent Variability: CV=${sentCV}% CI95=[${sentCI}] KB/run`);
 
 		console.log("\n🖥️  SERVER:");

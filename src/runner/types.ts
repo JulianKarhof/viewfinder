@@ -63,6 +63,8 @@ export interface ThroughputSummary {
 	bytesSentPerSecond: MetricsSummary;
 	totalBytesReceived: number;
 	totalBytesSent: number;
+	avgBytesReceivedPerRun: number;
+	avgBytesSentPerRun: number;
 	byClient: Record<
 		number,
 		{

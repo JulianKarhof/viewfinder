@@ -13,9 +13,9 @@
 		"dev": "DEBUG=true bun run src/index.ts",
 		"benchmark": "bun run src/index.ts",
 		"server": "bun run websocket-server.ts",
-		"scenarios:overlap": "bun run src/index.ts overlap",
-		"scenarios:separate": "bun run src/index.ts separate",
-		"scenarios:average": "bun run src/index.ts average",
+		"scenarios:worst-case": "bun run src/index.ts overlap",
+		"scenarios:best-case": "bun run src/index.ts separate",
+		"scenarios:ideation": "bun run src/index.ts ideation",
 		"format": "biome format --write .",
 		"lint": "biome lint .",
 		"typecheck": "tsc --noEmit"

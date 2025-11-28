@@ -15,7 +15,7 @@ async function main() {
 
 	const args = process.argv.slice(2);
 	let iterations = 50;
-	let scenarioName = "average";
+	let scenarioName = "ideation";
 
 	const iterationsArg = args.find(
 		(arg) => arg.startsWith("--iterations=") || arg.startsWith("-i="),

@@ -6,7 +6,7 @@ import { seededRandom } from "../utils/seededRandom";
 const shapeCountMultiplier = Settings.isDebugMode ? 1 : 100;
 
 /**
- * Complete Overlap
+ * Worst Case
  * All clients remain in the same viewport space throughout the benchmark.
  */
 export async function runCompleteOverlapScenario(
@@ -68,7 +68,7 @@ export async function runCompleteOverlapScenario(
 }
 
 /**
- * No Overlap
+ * Best Case
  * All client viewports are completely separate with no overlap.
  */
 export async function runNoOverlapScenario(
@@ -119,11 +119,11 @@ export async function runNoOverlapScenario(
 }
 
 /**
- * Average Use Case
+ * Ideation Scenario
  * Clients start in separate corners, create objects in isolation,
  * then move existing shapes to center where all viewports converge.
  */
-export async function runAverageUseCaseScenario(
+export async function runIdeationScenario(
 	collector: BenchmarkCollector | null,
 	enableViewportFiltering: boolean,
 ): Promise<void> {
@@ -278,16 +278,16 @@ export async function runAverageUseCaseScenario(
 
 export const scenarios = {
 	overlap: {
-		name: "Complete Overlap",
+		name: "Worst Case",
 		run: runCompleteOverlapScenario,
 	},
 	separate: {
-		name: "No Overlap",
+		name: "Best Case",
 		run: runNoOverlapScenario,
 	},
-	average: {
-		name: "Average Use Case",
-		run: runAverageUseCaseScenario,
+	ideation: {
+		name: "Ideation Scenario",
+		run: runIdeationScenario,
 	},
 } as const;
 
